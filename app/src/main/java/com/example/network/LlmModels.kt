@@ -36,7 +36,7 @@ data class AnthropicError(
 // --- OpenAI Models ---
 @JsonClass(generateAdapter = true)
 data class OpenAiRequest(
-    val model: String = "gpt-5.5-instant",
+    val model: String = "gpt-5.6-sol",
     val messages: List<OpenAiMessage>
 )
 
@@ -71,8 +71,7 @@ data class GeminiRequest(
 
 @JsonClass(generateAdapter = true)
 data class GeminiTool(
-    val googleSearch: GeminiGoogleSearch? = null,
-    @Json(name = "google_search") val google_search: GeminiGoogleSearch? = null
+    @Json(name = "google_search") val googleSearch: GeminiGoogleSearch? = null
 )
 
 @JsonClass(generateAdapter = true)

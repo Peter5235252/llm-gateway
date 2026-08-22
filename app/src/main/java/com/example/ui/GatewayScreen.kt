@@ -711,26 +711,41 @@ fun GatewayScreen() {
                             )
                         }
 
-                        if (error != null) {
+                        LaunchedEffect(error) {
+                            if (error != null) {
+                                kotlinx.coroutines.delay(6000)
+                                viewModel.clearError()
+                            }
+                        }
+                        androidx.compose.animation.AnimatedVisibility(
+                            visible = error != null,
+                            enter = androidx.compose.animation.expandVertically() + androidx.compose.animation.fadeIn(),
+                            exit = androidx.compose.animation.shrinkVertically() + androidx.compose.animation.fadeOut()
+                        ) {
                             Surface(
-                                color = Color(0x33FF0000),
-                                border = BorderStroke(1.dp, Color.Red),
-                                shape = RoundedCornerShape(8.dp),
-                                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)
+                                color = Color(0x22FF3B30),
+                                border = BorderStroke(1.dp, Color(0xFFFF3B30).copy(alpha = 0.5f)),
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)
                             ) {
-                                Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(Icons.Default.Info, contentDescription = "Error", tint = Color.Red)
+                                Row(modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Default.Info, contentDescription = null, tint = Color(0xFFFF3B30), modifier = Modifier.size(18.dp))
                                     Spacer(modifier = Modifier.width(8.dp))
                                     Text(
                                         text = error ?: "",
-                                        color = Color.Red,
-                                        style = MaterialTheme.typography.bodyMedium
+                                        color = if (isDarkMode) Color(0xFFFF6B6B) else Color(0xFFD32F2F),
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontSize = 13.sp,
+                                        modifier = Modifier.weight(1f)
                                     )
+                                    IconButton(onClick = { viewModel.clearError() }, modifier = Modifier.size(24.dp)) {
+                                        Icon(Icons.Default.Close, contentDescription = "Dismiss", tint = colors.onBackground.copy(alpha = 0.6f), modifier = Modifier.size(16.dp))
+                                    }
                                 }
                             }
                         }
 
-                        // Main Chat List or Empty State with minimalist details
+                        // Main Chat List or Empty State - polished with quick actions
                         if (messages.isEmpty()) {
                             Box(
                                 modifier = Modifier
@@ -746,22 +761,63 @@ fun GatewayScreen() {
                                     Icon(
                                         imageVector = Icons.Default.Info,
                                         contentDescription = null,
-                                        tint = colors.onBackground.copy(alpha = 0.15f),
+                                        tint = colors.onBackground.copy(alpha = 0.12f),
                                         modifier = Modifier.size(48.dp)
                                     )
                                     Spacer(modifier = Modifier.height(16.dp))
                                     Text(
                                         text = "Start a conversation",
                                         style = MaterialTheme.typography.titleMedium,
-                                        color = colors.onBackground.copy(alpha = 0.7f),
+                                        color = colors.onBackground.copy(alpha = 0.8f),
                                         fontWeight = FontWeight.Bold
                                     )
                                     Spacer(modifier = Modifier.height(6.dp))
                                     Text(
-                                        text = "Secure local key-guarded message pipeline.",
+                                        text = "Secure local key-guarded pipeline.\nPick a provider above or try a suggestion:",
                                         style = MaterialTheme.typography.bodySmall,
-                                        color = colors.onBackground.copy(alpha = 0.4f),
-                                        textAlign = TextAlign.Center
+                                        color = colors.onBackground.copy(alpha = 0.45f),
+                                        textAlign = TextAlign.Center,
+                                        lineHeight = 16.sp
+                                    )
+                                    Spacer(modifier = Modifier.height(18.dp))
+                                    // Suggestion chips - UX polish
+                                    val suggestions = listOf(
+                                        "Explain this code" to "Explain this code snippet and suggest improvements",
+                                        "Summarize file" to "Use /read <filename> to summarize a file from my working directory",
+                                        "Draft email" to "Draft a concise professional email about...",
+                                        "Search the web" to "Search the web for the latest news on Gemini 3.7 Flash"
+                                    )
+                                    Column(verticalArrangement = Arrangement.spacedBy(8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                        suggestions.chunked(2).forEach { row ->
+                                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                                row.forEach { (label, prompt) ->
+                                                    Surface(
+                                                        shape = RoundedCornerShape(20.dp),
+                                                        color = colors.frostedGlass,
+                                                        border = BorderStroke(1.dp, colors.frostedBorder),
+                                                        modifier = Modifier.clickable {
+                                                            SoundSynth.playTap()
+                                                            viewModel.sendMessage(prompt)
+                                                        }
+                                                    ) {
+                                                        Text(
+                                                            text = label,
+                                                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                                            color = colors.onBackground.copy(alpha = 0.85f),
+                                                            fontSize = 12.sp,
+                                                            fontWeight = FontWeight.Medium
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                    Spacer(modifier = Modifier.height(12.dp))
+                                    Text(
+                                        text = "Tip: Attach files with 📎 or use /export to save chat",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = colors.onBackground.copy(alpha = 0.3f),
+                                        fontSize = 10.sp
                                     )
                                 }
                             }
@@ -1177,6 +1233,7 @@ fun MessageInput(
         }
     }
 
+    val canSend = text.isNotBlank() || selectedAttachment != null
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -1191,7 +1248,7 @@ fun MessageInput(
                 filePickerLauncher.launch("*/*")
             }
         ) {
-            Icon(Icons.Default.AttachFile, contentDescription = "Attach Photo or File", tint = colors.onBackground)
+            Icon(Icons.Default.AttachFile, contentDescription = "Attach Photo or File", tint = colors.onBackground.copy(alpha = 0.85f))
         }
 
         IconButton(
@@ -1207,7 +1264,7 @@ fun MessageInput(
                 }
             }
         ) {
-            Icon(Icons.Default.Mic, contentDescription = "Speech to Text", tint = colors.onBackground)
+            Icon(Icons.Default.Mic, contentDescription = "Speech to Text", tint = colors.onBackground.copy(alpha = 0.85f))
         }
 
         TextField(
@@ -1220,21 +1277,35 @@ fun MessageInput(
                 focusedIndicatorColor = Color.Transparent,
                 unfocusedIndicatorColor = Color.Transparent,
                 focusedTextColor = colors.onBackground,
-                unfocusedTextColor = colors.onBackground
+                unfocusedTextColor = colors.onBackground,
+                cursorColor = colors.onBackground
             ),
-            placeholder = { Text("Type a message...", color = colors.onBackground.copy(alpha = 0.5f)) }
+            placeholder = { Text("Message • /read & /export supported", color = colors.onBackground.copy(alpha = 0.4f), fontSize = 13.sp) },
+            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Send),
+            keyboardActions = androidx.compose.foundation.text.KeyboardActions(onSend = {
+                if (canSend) {
+                    SoundSynth.playTap()
+                    onSend(text)
+                    text = ""
+                }
+            }),
+            maxLines = 5
         )
 
         IconButton(
             onClick = {
+                if (!canSend) return@IconButton
                 SoundSynth.playTap()
-                if (text.isNotBlank() || selectedAttachment != null) {
-                    onSend(text)
-                    text = ""
-                }
-            }
+                onSend(text)
+                text = ""
+            },
+            enabled = true
         ) {
-            Icon(Icons.Default.Send, contentDescription = "Send", tint = colors.onBackground)
+            Icon(
+                Icons.Default.Send,
+                contentDescription = "Send",
+                tint = if (canSend) colors.onBackground else colors.onBackground.copy(alpha = 0.3f)
+            )
         }
     }
 }
@@ -1261,10 +1332,6 @@ fun SettingsDrawerContent(viewModel: GatewayViewModel) {
             viewModel.updateWorkingDirUri(uri.toString())
         }
     }
-
-    val manageStoragePermissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.StartActivityForResult()
-    ) { }
 
     Column(modifier = Modifier.padding(16.dp).fillMaxHeight()) {
         Text("Gateway Settings", style = MaterialTheme.typography.titleLarge, color = colors.onBackground, fontWeight = FontWeight.Bold)
@@ -1399,28 +1466,14 @@ fun SettingsDrawerContent(viewModel: GatewayViewModel) {
             colors = ButtonDefaults.buttonColors(containerColor = colors.frostedGlass, contentColor = colors.onBackground),
             border = BorderStroke(1.dp, colors.frostedBorder)
         ) {
-            Text(if (workingDirUri.isEmpty()) "Select Working Directory" else "Directory Selected")
+            Text(if (workingDirUri.isEmpty()) "Select Working Directory" else "✓ Directory Selected")
         }
-
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
-            Button(
-                onClick = {
-                    SoundSynth.playTap()
-                    try {
-                        val intent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION)
-                        intent.data = Uri.parse("package:${context.packageName}")
-                        manageStoragePermissionLauncher.launch(intent)
-                    } catch (e: Exception) {
-                        val intent = Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)
-                        manageStoragePermissionLauncher.launch(intent)
-                    }
-                },
-                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = colors.frostedGlass, contentColor = colors.onBackground),
-                border = BorderStroke(1.dp, colors.frostedBorder)
-            ) {
-                Text("Grant All Files Access")
-            }
-        }
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(
+            text = "Uses Storage Access Framework - no broad file permission needed. Re-select after reboot if needed.",
+            color = colors.onBackground.copy(alpha = 0.4f),
+            fontSize = 10.sp,
+            lineHeight = 13.sp
+        )
     }
 }
