@@ -1375,13 +1375,24 @@ fun MessageInput(
             .border(1.dp, colors.frostedBorder, RoundedCornerShape(24.dp)),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // + button far left - overflow for tools to reduce bloat
+        // + button far left - all-in-one tooltip for tools (now includes globe)
         Box {
             IconButton(onClick = {
                 SoundSynth.playTap()
                 showPlusMenu = true
             }) {
-                Icon(Icons.Default.Add, contentDescription = "More tools", tint = colors.onBackground.copy(alpha = 0.85f))
+                Box {
+                    Icon(Icons.Default.Add, contentDescription = "More tools", tint = if (isForceGrounding && isGemini) Color(0xFF4285F4) else colors.onBackground.copy(alpha = 0.85f))
+                    if (isForceGrounding && isGemini) {
+                        Box(
+                            modifier = Modifier
+                                .size(8.dp)
+                                .align(Alignment.TopEnd)
+                                .background(Color(0xFF4285F4), androidx.compose.foundation.shape.CircleShape)
+                                .border(1.dp, colors.surface, androidx.compose.foundation.shape.CircleShape)
+                        )
+                    }
+                }
             }
             DropdownMenu(
                 expanded = showPlusMenu,
@@ -1395,6 +1406,18 @@ fun MessageInput(
                         showPlusMenu = false
                         SoundSynth.playTap()
                         filePickerLauncher.launch("*/*")
+                    }
+                )
+                DropdownMenuItem(
+                    text = { Column { Text(if (isForceGrounding) "✓ Web grounding (next)" else "Force web grounding", color = if (isForceGrounding) Color(0xFF4285F4) else colors.onBackground, fontSize = 13.sp, fontWeight = if (isForceGrounding) FontWeight.Bold else FontWeight.Normal); Text(if (isGemini) "Gemini 3.7 Flash / 3.1 Pro" else "Only for Gemini", color = colors.onBackground.copy(alpha = 0.5f), fontSize = 10.sp) } },
+                    leadingIcon = { Icon(Icons.Default.Language, contentDescription = null, tint = if (isForceGrounding) Color(0xFF4285F4) else if (isGemini) colors.onBackground else colors.onBackground.copy(alpha = 0.3f), modifier = Modifier.size(18.dp)) },
+                    onClick = {
+                        showPlusMenu = false
+                        SoundSynth.playTap()
+                        if (!isGemini) {
+                            android.widget.Toast.makeText(context, "Web grounding only for Gemini 3.7 Flash / 3.1 Pro", android.widget.Toast.LENGTH_SHORT).show()
+                        }
+                        onToggleForceGrounding()
                     }
                 )
                 HorizontalDivider(color = colors.frostedBorder, thickness = 0.5.dp)
@@ -1415,29 +1438,6 @@ fun MessageInput(
                 DropdownMenuItem(
                     text = { Column { Text("Clear highlights", color = colors.onBackground, fontSize = 12.sp); Text("Deselect user messages", color = colors.onBackground.copy(alpha = 0.5f), fontSize = 10.sp) } },
                     onClick = { showPlusMenu = false }
-                )
-            }
-        }
-
-        // Globe icon - force web grounding for next Gemini response (both 3.1 Pro & 3.7 Flash)
-        Box(
-            modifier = Modifier
-                .clip(RoundedCornerShape(16.dp))
-                .background(if (isForceGrounding) Color(0xFF4285F4).copy(alpha = 0.15f) else Color.Transparent)
-                .border(1.dp, if (isForceGrounding) Color(0xFF4285F4).copy(alpha = 0.5f) else Color.Transparent, RoundedCornerShape(16.dp))
-        ) {
-            IconButton(onClick = {
-                SoundSynth.playTap()
-                if (!isGemini) {
-                    android.widget.Toast.makeText(context, "Web grounding only for Gemini 3.7 Flash / 3.1 Pro", android.widget.Toast.LENGTH_SHORT).show()
-                }
-                onToggleForceGrounding()
-            }) {
-                Icon(
-                    Icons.Default.Language,
-                    contentDescription = if (isForceGrounding) "Grounding forced for next response" else "Force web search (Gemini)",
-                    tint = if (isForceGrounding) Color(0xFF4285F4) else if (isGemini) colors.onBackground.copy(alpha = 0.85f) else colors.onBackground.copy(alpha = 0.3f),
-                    modifier = Modifier.size(20.dp)
                 )
             }
         }
