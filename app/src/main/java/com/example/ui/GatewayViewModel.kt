@@ -521,6 +521,36 @@ class GatewayViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    // Edit / Revert user messages - shown when user highlights their own message
+    fun editUserMessage(messageId: String, newContent: String) {
+        val trimmed = newContent.trim()
+        if (trimmed.isEmpty()) return
+        val current = _messages.value.toMutableList()
+        val idx = current.indexOfFirst { it.id == messageId && it.role == "user" }
+        if (idx == -1) return
+        val old = current[idx]
+        current[idx] = old.copy(content = trimmed)
+        _messages.value = current
+    }
+
+    fun revertUserMessage(messageId: String) {
+        val current = _messages.value.toMutableList()
+        val idx = current.indexOfFirst { it.id == messageId }
+        if (idx == -1) return
+        // Remove the user message
+        current.removeAt(idx)
+        // If next message is a model/assistant response, remove it as well (revert the exchange)
+        if (idx < current.size) {
+            val next = current[idx]
+            if (next.role == "model" || next.role == "assistant") {
+                current.removeAt(idx)
+            }
+        }
+        _messages.value = current
+        // Stop any ongoing TTS that might be related
+        stopSpeaking()
+    }
+
     private suspend fun callAnthropic(modelId: String, history: List<ChatMessage>): String {
         val buildConfigKey = com.example.BuildConfig.ANTHROPIC_API_KEY.trim()
         val defaultKey = if (buildConfigKey != "MY_ANTHROPIC_API_KEY") buildConfigKey else ""

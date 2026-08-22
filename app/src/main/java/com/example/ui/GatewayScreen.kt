@@ -21,6 +21,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
@@ -30,6 +31,7 @@ import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material.icons.filled.Undo
 import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -96,6 +98,9 @@ fun GatewayScreen() {
     val context = LocalContext.current
     var showProWarningDialog by remember { mutableStateOf(false) }
     var pendingModelSwitch by remember { mutableStateOf<LlmModel?>(null) }
+    var highlightedUserMessageId by remember { mutableStateOf<String?>(null) }
+    var editingMessage by remember { mutableStateOf<ChatMessage?>(null) }
+    var editDraft by remember { mutableStateOf("") }
 
     val colorScheme = remember(isDarkMode) {
         if (isDarkMode) {
@@ -713,6 +718,43 @@ fun GatewayScreen() {
                             )
                         }
 
+                        if (editingMessage != null) {
+                            AlertDialog(
+                                onDismissRequest = { editingMessage = null },
+                                title = { Text("Edit message", color = colors.onSurface, fontWeight = FontWeight.Bold, fontSize = 16.sp) },
+                                text = {
+                                    OutlinedTextField(
+                                        value = editDraft,
+                                        onValueChange = { editDraft = it },
+                                        modifier = Modifier.fillMaxWidth(),
+                                        minLines = 3,
+                                        colors = OutlinedTextFieldDefaults.colors(
+                                            focusedBorderColor = colors.onBackground,
+                                            unfocusedBorderColor = colors.frostedBorder,
+                                            focusedTextColor = colors.onBackground,
+                                            unfocusedTextColor = colors.onBackground
+                                        )
+                                    )
+                                },
+                                confirmButton = {
+                                    Button(
+                                        onClick = {
+                                            SoundSynth.playTap()
+                                            editingMessage?.let { viewModel.editUserMessage(it.id, editDraft) }
+                                            editingMessage = null
+                                        },
+                                        colors = ButtonDefaults.buttonColors(containerColor = colors.userBubble, contentColor = colors.userBubbleText)
+                                    ) { Text("Save", fontWeight = FontWeight.Bold) }
+                                },
+                                dismissButton = {
+                                    TextButton(onClick = { editingMessage = null }) { Text("Cancel", color = colors.onSurface.copy(alpha = 0.6f)) }
+                                },
+                                containerColor = colors.surface,
+                                shape = RoundedCornerShape(16.dp),
+                                modifier = Modifier.border(1.dp, colors.frostedBorder, RoundedCornerShape(16.dp))
+                            )
+                        }
+
                         LaunchedEffect(error) {
                             if (error != null) {
                                 kotlinx.coroutines.delay(6000)
@@ -831,11 +873,25 @@ fun GatewayScreen() {
                             ) {
                                 items(messages, key = { it.id }) { msg ->
                                     val isSpeaking = speakingMessageId == msg.id
+                                    val isHighlighted = highlightedUserMessageId == msg.id
                                     MessageBubble(
                                         message = msg,
                                         isSpeaking = isSpeaking,
+                                        isHighlighted = isHighlighted,
                                         onSpeak = { viewModel.speakText(msg.id, msg.content) },
-                                        onRegenerate = { viewModel.regenerateResponse(msg.id) }
+                                        onRegenerate = { viewModel.regenerateResponse(msg.id) },
+                                        onUserMessageClick = {
+                                            highlightedUserMessageId = if (isHighlighted) null else msg.id
+                                        },
+                                        onEditUserMessage = {
+                                            editDraft = msg.content
+                                            editingMessage = msg
+                                            highlightedUserMessageId = null
+                                        },
+                                        onRevertUserMessage = {
+                                            viewModel.revertUserMessage(msg.id)
+                                            highlightedUserMessageId = null
+                                        }
                                     )
                                 }
                                 if (isLoading) {
@@ -968,8 +1024,12 @@ fun GatewayScreen() {
 fun MessageBubble(
     message: ChatMessage,
     isSpeaking: Boolean = false,
+    isHighlighted: Boolean = false,
     onSpeak: () -> Unit = {},
-    onRegenerate: () -> Unit = {}
+    onRegenerate: () -> Unit = {},
+    onUserMessageClick: () -> Unit = {},
+    onEditUserMessage: () -> Unit = {},
+    onRevertUserMessage: () -> Unit = {}
 ) {
     val isUser = message.role == "user"
     val isSystem = message.role == "system"
@@ -1010,8 +1070,8 @@ fun MessageBubble(
                     color = if (isUser) colors.userBubble else colors.otherBubble,
                     contentColor = if (isUser) colors.userBubbleText else colors.otherBubbleText,
                     shape = bubbleShape,
-                    border = if (!isUser) BorderStroke(1.dp, colors.frostedBorder) else null,
-                    modifier = Modifier.padding(vertical = 2.dp)
+                    border = if (isHighlighted && isUser) BorderStroke(1.5.dp, Color(0xFF4285F4).copy(alpha = 0.6f)) else if (!isUser) BorderStroke(1.dp, colors.frostedBorder) else null,
+                    modifier = Modifier.padding(vertical = 2.dp).then(if (isUser) Modifier.clickable { onUserMessageClick() } else Modifier)
                 ) {
                     Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
                         message.attachment?.let { attachment ->
@@ -1132,6 +1192,69 @@ fun MessageBubble(
                                             overflow = TextOverflow.Ellipsis
                                         )
                                     }
+                                }
+                            }
+                        }
+                    }
+                }
+                if (isUser) {
+                    androidx.compose.animation.AnimatedVisibility(
+                        visible = isHighlighted,
+                        enter = androidx.compose.animation.expandVertically() + androidx.compose.animation.fadeIn(),
+                        exit = androidx.compose.animation.shrinkVertically() + androidx.compose.animation.fadeOut()
+                    ) {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.padding(top = 4.dp, end = 4.dp).align(Alignment.End)
+                        ) {
+                            Surface(
+                                shape = RoundedCornerShape(16.dp),
+                                color = colors.frostedGlass.copy(alpha = 0.08f),
+                                border = BorderStroke(0.5.dp, colors.frostedBorder.copy(alpha = 0.3f)),
+                                modifier = Modifier.clickable { onEditUserMessage() }
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Edit,
+                                        contentDescription = "Edit",
+                                        tint = colors.onBackground.copy(alpha = 0.7f),
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = "Edit",
+                                        fontSize = 11.sp,
+                                        color = colors.onBackground.copy(alpha = 0.7f),
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                }
+                            }
+                            Surface(
+                                shape = RoundedCornerShape(16.dp),
+                                color = Color(0x22FF3B30),
+                                border = BorderStroke(0.5.dp, Color(0xFFFF3B30).copy(alpha = 0.4f)),
+                                modifier = Modifier.clickable { onRevertUserMessage() }
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Undo,
+                                        contentDescription = "Revert",
+                                        tint = Color(0xFFFF3B30).copy(alpha = 0.8f),
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = "Revert",
+                                        fontSize = 11.sp,
+                                        color = Color(0xFFFF3B30).copy(alpha = 0.9f),
+                                        fontWeight = FontWeight.Medium
+                                    )
                                 }
                             }
                         }
@@ -1274,20 +1397,6 @@ fun MessageInput(
                         filePickerLauncher.launch("*/*")
                     }
                 )
-                DropdownMenuItem(
-                    text = { Text("Voice input", color = colors.onBackground, fontSize = 13.sp) },
-                    leadingIcon = { Icon(Icons.Default.Mic, contentDescription = null, tint = colors.onBackground, modifier = Modifier.size(18.dp)) },
-                    onClick = {
-                        showPlusMenu = false
-                        SoundSynth.playTap()
-                        try {
-                            val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-                                putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-                            }
-                            speechLauncher.launch(intent)
-                        } catch (e: Exception) { e.printStackTrace() }
-                    }
-                )
                 HorizontalDivider(color = colors.frostedBorder, thickness = 0.5.dp)
                 DropdownMenuItem(
                     text = { Column { Text("/read <file>", color = colors.onBackground, fontSize = 12.sp, fontWeight = FontWeight.Medium); Text("Read from working dir", color = colors.onBackground.copy(alpha = 0.5f), fontSize = 10.sp) } },
@@ -1302,6 +1411,10 @@ fun MessageInput(
                         showPlusMenu = false
                         text = "/export "
                     }
+                )
+                DropdownMenuItem(
+                    text = { Column { Text("Clear highlights", color = colors.onBackground, fontSize = 12.sp); Text("Deselect user messages", color = colors.onBackground.copy(alpha = 0.5f), fontSize = 10.sp) } },
+                    onClick = { showPlusMenu = false }
                 )
             }
         }
@@ -1354,6 +1467,17 @@ fun MessageInput(
             maxLines = 5
         )
 
+        IconButton(onClick = {
+            SoundSynth.playTap()
+            try {
+                val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                    putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                }
+                speechLauncher.launch(intent)
+            } catch (e: Exception) { e.printStackTrace() }
+        }) {
+            Icon(Icons.Default.Mic, contentDescription = "Dictation", tint = colors.onBackground.copy(alpha = 0.85f))
+        }
         IconButton(
             onClick = {
                 if (!canSend) return@IconButton
