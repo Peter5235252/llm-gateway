@@ -1,0 +1,6 @@
+{
+  "name": "LLM Gateway",
+  "description": "Multi-LLM Storage-Aware Gateway & Automation Client",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
