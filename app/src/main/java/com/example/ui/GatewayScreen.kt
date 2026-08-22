@@ -17,6 +17,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Description
@@ -91,6 +92,7 @@ fun GatewayScreen() {
     val anthropicKey by viewModel.anthropicKey.collectAsState()
     val openAiKey by viewModel.openAiKey.collectAsState()
     val customKey by viewModel.customKey.collectAsState()
+    val forceGrounding by viewModel.forceGroundingNext.collectAsState()
     val context = LocalContext.current
     var showProWarningDialog by remember { mutableStateOf(false) }
     var pendingModelSwitch by remember { mutableStateOf<LlmModel?>(null) }
@@ -945,6 +947,9 @@ fun GatewayScreen() {
 
                         MessageInput(
                             selectedAttachment = selectedAttachment,
+                            selectedModel = selectedModel,
+                            isForceGrounding = forceGrounding,
+                            onToggleForceGrounding = { viewModel.toggleForceGrounding() },
                             onFileSelected = { uri, mimeType, name ->
                                 viewModel.processSelectedUri(uri, mimeType, name)
                             },
@@ -1201,12 +1206,17 @@ fun MessageBubble(
 @Composable
 fun MessageInput(
     selectedAttachment: Attachment?,
+    selectedModel: LlmModel,
+    isForceGrounding: Boolean,
+    onToggleForceGrounding: () -> Unit,
     onFileSelected: (Uri, String?, String) -> Unit,
     onSend: (String) -> Unit
 ) {
     var text by remember { mutableStateOf("") }
+    var showPlusMenu by remember { mutableStateOf(false) }
     val context = LocalContext.current
     val colors = LocalGatewayColors.current
+    val isGemini = selectedModel.provider == LlmProvider.GEMINI_FLASH || selectedModel.provider == LlmProvider.GEMINI_PRO
 
     val speechLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.resultCode == Activity.RESULT_OK) {
@@ -1242,29 +1252,81 @@ fun MessageInput(
             .border(1.dp, colors.frostedBorder, RoundedCornerShape(24.dp)),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        IconButton(
-            onClick = {
+        // + button far left - overflow for tools to reduce bloat
+        Box {
+            IconButton(onClick = {
                 SoundSynth.playTap()
-                filePickerLauncher.launch("*/*")
+                showPlusMenu = true
+            }) {
+                Icon(Icons.Default.Add, contentDescription = "More tools", tint = colors.onBackground.copy(alpha = 0.85f))
             }
-        ) {
-            Icon(Icons.Default.AttachFile, contentDescription = "Attach Photo or File", tint = colors.onBackground.copy(alpha = 0.85f))
+            DropdownMenu(
+                expanded = showPlusMenu,
+                onDismissRequest = { showPlusMenu = false },
+                modifier = Modifier.background(colors.surface).border(1.dp, colors.frostedBorder, RoundedCornerShape(12.dp))
+            ) {
+                DropdownMenuItem(
+                    text = { Text("Attach file / image", color = colors.onBackground, fontSize = 13.sp) },
+                    leadingIcon = { Icon(Icons.Default.AttachFile, contentDescription = null, tint = colors.onBackground, modifier = Modifier.size(18.dp)) },
+                    onClick = {
+                        showPlusMenu = false
+                        SoundSynth.playTap()
+                        filePickerLauncher.launch("*/*")
+                    }
+                )
+                DropdownMenuItem(
+                    text = { Text("Voice input", color = colors.onBackground, fontSize = 13.sp) },
+                    leadingIcon = { Icon(Icons.Default.Mic, contentDescription = null, tint = colors.onBackground, modifier = Modifier.size(18.dp)) },
+                    onClick = {
+                        showPlusMenu = false
+                        SoundSynth.playTap()
+                        try {
+                            val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                                putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                            }
+                            speechLauncher.launch(intent)
+                        } catch (e: Exception) { e.printStackTrace() }
+                    }
+                )
+                HorizontalDivider(color = colors.frostedBorder, thickness = 0.5.dp)
+                DropdownMenuItem(
+                    text = { Column { Text("/read <file>", color = colors.onBackground, fontSize = 12.sp, fontWeight = FontWeight.Medium); Text("Read from working dir", color = colors.onBackground.copy(alpha = 0.5f), fontSize = 10.sp) } },
+                    onClick = {
+                        showPlusMenu = false
+                        text = "/read "
+                    }
+                )
+                DropdownMenuItem(
+                    text = { Column { Text("/export <file>", color = colors.onBackground, fontSize = 12.sp, fontWeight = FontWeight.Medium); Text("Save chat to file", color = colors.onBackground.copy(alpha = 0.5f), fontSize = 10.sp) } },
+                    onClick = {
+                        showPlusMenu = false
+                        text = "/export "
+                    }
+                )
+            }
         }
 
-        IconButton(
-            onClick = {
-                SoundSynth.playTap()
-                try {
-                    val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-                        putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-                    }
-                    speechLauncher.launch(intent)
-                } catch (e: Exception) {
-                    e.printStackTrace()
-                }
-            }
+        // Globe icon - force web grounding for next Gemini response (both 3.1 Pro & 3.7 Flash)
+        Box(
+            modifier = Modifier
+                .clip(RoundedCornerShape(16.dp))
+                .background(if (isForceGrounding) Color(0xFF4285F4).copy(alpha = 0.15f) else Color.Transparent)
+                .border(1.dp, if (isForceGrounding) Color(0xFF4285F4).copy(alpha = 0.5f) else Color.Transparent, RoundedCornerShape(16.dp))
         ) {
-            Icon(Icons.Default.Mic, contentDescription = "Speech to Text", tint = colors.onBackground.copy(alpha = 0.85f))
+            IconButton(onClick = {
+                SoundSynth.playTap()
+                if (!isGemini) {
+                    android.widget.Toast.makeText(context, "Web grounding only for Gemini 3.7 Flash / 3.1 Pro", android.widget.Toast.LENGTH_SHORT).show()
+                }
+                onToggleForceGrounding()
+            }) {
+                Icon(
+                    Icons.Default.Language,
+                    contentDescription = if (isForceGrounding) "Grounding forced for next response" else "Force web search (Gemini)",
+                    tint = if (isForceGrounding) Color(0xFF4285F4) else if (isGemini) colors.onBackground.copy(alpha = 0.85f) else colors.onBackground.copy(alpha = 0.3f),
+                    modifier = Modifier.size(20.dp)
+                )
+            }
         }
 
         TextField(
@@ -1280,7 +1342,7 @@ fun MessageInput(
                 unfocusedTextColor = colors.onBackground,
                 cursorColor = colors.onBackground
             ),
-            placeholder = { Text("Message • /read & /export supported", color = colors.onBackground.copy(alpha = 0.4f), fontSize = 13.sp) },
+            placeholder = { Text(if (isForceGrounding && isGemini) "Message • 🌐 grounding next" else "Message • /read & /export", color = colors.onBackground.copy(alpha = 0.4f), fontSize = 13.sp) },
             keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Send),
             keyboardActions = androidx.compose.foundation.text.KeyboardActions(onSend = {
                 if (canSend) {

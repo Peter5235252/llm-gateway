@@ -90,6 +90,19 @@ class GatewayViewModel(application: Application) : AndroidViewModel(application)
 
     fun clearError() { _error.value = null }
 
+    // Force grounding for next Gemini response (globe icon)
+    private val _forceGroundingNext = MutableStateFlow(false)
+    val forceGroundingNext: StateFlow<Boolean> = _forceGroundingNext.asStateFlow()
+
+    fun toggleForceGrounding() {
+        // Only relevant for Gemini models - but allow toggle always, UI will hint
+        _forceGroundingNext.value = !_forceGroundingNext.value
+    }
+
+    fun clearForceGrounding() {
+        _forceGroundingNext.value = false
+    }
+
     private val _selectedAttachment = MutableStateFlow<Attachment?>(null)
     val selectedAttachment: StateFlow<Attachment?> = _selectedAttachment.asStateFlow()
 
@@ -334,20 +347,23 @@ class GatewayViewModel(application: Application) : AndroidViewModel(application)
             _error.value = null
             
             val modelVal = _selectedModel.value
-            if (modelVal == LlmModel.GEMINI_FLASH) {
-                _isBrowsingWeb.value = true
-            }
+            val isGemini = modelVal.provider == LlmProvider.GEMINI_FLASH || modelVal.provider == LlmProvider.GEMINI_PRO
+            // Grounding enabled for both Gemini models; globe forces it for next Gemini response (one-shot, consumed)
+            val forceActive = _forceGroundingNext.value
+            val enableSearch = isGemini // both 3.1 Pro and 3.7 Flash now support grounding; force flag consumed for UX feedback
+            if (enableSearch) _isBrowsingWeb.value = true
+            if (forceActive) _forceGroundingNext.value = false
             
             try {
                 val (responseContent, sources, queries) = when (modelVal.provider) {
                     LlmProvider.ANTHROPIC -> Triple(callAnthropic(modelVal.modelId, _messages.value), emptyList<GroundingSource>(), emptyList<String>())
                     LlmProvider.OPENAI -> Triple(callOpenAi(modelVal.modelId, _messages.value), emptyList<GroundingSource>(), emptyList<String>())
                     LlmProvider.GEMINI_PRO -> {
-                        val res = callGemini(modelVal.modelId, _messages.value, enableSearch = false)
+                        val res = callGemini(modelVal.modelId, _messages.value, enableSearch = enableSearch)
                         Triple(res.text, res.sources, res.searchQueries)
                     }
                     LlmProvider.GEMINI_FLASH -> {
-                        val res = callGemini(modelVal.modelId, _messages.value, enableSearch = true)
+                        val res = callGemini(modelVal.modelId, _messages.value, enableSearch = enableSearch)
                         Triple(res.text, res.sources, res.searchQueries)
                     }
                     LlmProvider.MISTRAL -> {
@@ -404,20 +420,22 @@ class GatewayViewModel(application: Application) : AndroidViewModel(application)
             _error.value = null
 
             val modelVal = _selectedModel.value
-            if (modelVal == LlmModel.GEMINI_FLASH) {
-                _isBrowsingWeb.value = true
-            }
+            val isGeminiRegen = modelVal.provider == LlmProvider.GEMINI_FLASH || modelVal.provider == LlmProvider.GEMINI_PRO
+            val forceActiveRegen = _forceGroundingNext.value
+            val enableSearchRegen = isGeminiRegen // both 3.1 Pro and 3.7 Flash now support grounding
+            if (enableSearchRegen) _isBrowsingWeb.value = true
+            if (forceActiveRegen) _forceGroundingNext.value = false
 
             try {
                 val (responseContent, sources, queries) = when (modelVal.provider) {
                     LlmProvider.ANTHROPIC -> Triple(callAnthropic(modelVal.modelId, historyForGeneration), emptyList<GroundingSource>(), emptyList<String>())
                     LlmProvider.OPENAI -> Triple(callOpenAi(modelVal.modelId, historyForGeneration), emptyList<GroundingSource>(), emptyList<String>())
                     LlmProvider.GEMINI_PRO -> {
-                        val res = callGemini(modelVal.modelId, historyForGeneration, enableSearch = false)
+                        val res = callGemini(modelVal.modelId, historyForGeneration, enableSearch = enableSearchRegen)
                         Triple(res.text, res.sources, res.searchQueries)
                     }
                     LlmProvider.GEMINI_FLASH -> {
-                        val res = callGemini(modelVal.modelId, historyForGeneration, enableSearch = true)
+                        val res = callGemini(modelVal.modelId, historyForGeneration, enableSearch = enableSearchRegen)
                         Triple(res.text, res.sources, res.searchQueries)
                     }
                     LlmProvider.MISTRAL -> {
