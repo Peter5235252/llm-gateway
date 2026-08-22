@@ -23,6 +23,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Upload
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Language
@@ -1400,8 +1401,8 @@ fun MessageInput(
                 modifier = Modifier.background(colors.surface).border(1.dp, colors.frostedBorder, RoundedCornerShape(12.dp))
             ) {
                 DropdownMenuItem(
-                    text = { Text("Attach file / image", color = colors.onBackground, fontSize = 13.sp) },
-                    leadingIcon = { Icon(Icons.Default.AttachFile, contentDescription = null, tint = colors.onBackground, modifier = Modifier.size(18.dp)) },
+                    text = { Column { Text("Attach file / image", color = colors.onBackground, fontSize = 12.sp, fontWeight = FontWeight.Medium); Text("Image, doc, text", color = colors.onBackground.copy(alpha = 0.5f), fontSize = 10.sp) } },
+                    leadingIcon = { Icon(Icons.Default.AttachFile, contentDescription = null, tint = colors.onBackground.copy(alpha = 0.85f), modifier = Modifier.size(18.dp)) },
                     onClick = {
                         showPlusMenu = false
                         SoundSynth.playTap()
@@ -1423,6 +1424,7 @@ fun MessageInput(
                 HorizontalDivider(color = colors.frostedBorder, thickness = 0.5.dp)
                 DropdownMenuItem(
                     text = { Column { Text("/read <file>", color = colors.onBackground, fontSize = 12.sp, fontWeight = FontWeight.Medium); Text("Read from working dir", color = colors.onBackground.copy(alpha = 0.5f), fontSize = 10.sp) } },
+                    leadingIcon = { Icon(Icons.Default.Description, contentDescription = null, tint = colors.onBackground.copy(alpha = 0.85f), modifier = Modifier.size(18.dp)) },
                     onClick = {
                         showPlusMenu = false
                         text = "/read "
@@ -1430,13 +1432,15 @@ fun MessageInput(
                 )
                 DropdownMenuItem(
                     text = { Column { Text("/export <file>", color = colors.onBackground, fontSize = 12.sp, fontWeight = FontWeight.Medium); Text("Save chat to file", color = colors.onBackground.copy(alpha = 0.5f), fontSize = 10.sp) } },
+                    leadingIcon = { Icon(Icons.Default.Upload, contentDescription = null, tint = colors.onBackground.copy(alpha = 0.85f), modifier = Modifier.size(18.dp)) },
                     onClick = {
                         showPlusMenu = false
                         text = "/export "
                     }
                 )
                 DropdownMenuItem(
-                    text = { Column { Text("Clear highlights", color = colors.onBackground, fontSize = 12.sp); Text("Deselect user messages", color = colors.onBackground.copy(alpha = 0.5f), fontSize = 10.sp) } },
+                    text = { Column { Text("Clear highlights", color = colors.onBackground, fontSize = 12.sp, fontWeight = FontWeight.Medium); Text("Deselect user messages", color = colors.onBackground.copy(alpha = 0.5f), fontSize = 10.sp) } },
+                    leadingIcon = { Icon(Icons.Default.Close, contentDescription = null, tint = colors.onBackground.copy(alpha = 0.7f), modifier = Modifier.size(18.dp)) },
                     onClick = { showPlusMenu = false }
                 )
             }
