@@ -45,6 +45,7 @@ import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.MicOff
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.*
@@ -113,6 +114,7 @@ fun GatewayScreen() {
     val isVoiceMode by viewModel.isVoiceMode.collectAsState()
     val voiceModeStatus by viewModel.voiceModeStatus.collectAsState()
     val voiceTranscript by viewModel.voiceTranscript.collectAsState()
+    val isMicMuted by viewModel.isMicMuted.collectAsState()
     val context = LocalContext.current
     var showProWarningDialog by remember { mutableStateOf(false) }
     var pendingModelSwitch by remember { mutableStateOf<LlmModel?>(null) }
@@ -1143,10 +1145,12 @@ fun GatewayScreen() {
                             isVoiceMode = isVoiceMode,
                             voiceModeStatus = voiceModeStatus,
                             voiceTranscript = voiceTranscript,
+                            isMicMuted = isMicMuted,
                             isLoading = isLoading,
                             onToggleVoiceMode = { viewModel.setVoiceMode(!isVoiceMode) },
                             onUpdateVoiceStatus = { viewModel.updateVoiceStatus(it) },
                             onUpdateVoiceTranscript = { viewModel.updateVoiceTranscript(it) },
+                            onToggleMicMute = { viewModel.toggleMicMute() },
                             onToggleForceGrounding = { viewModel.toggleForceGrounding() },
                             onFileSelected = { uri, mimeType, name ->
                                 viewModel.processSelectedUri(uri, mimeType, name)
@@ -1586,10 +1590,12 @@ fun MessageInput(
     isVoiceMode: Boolean,
     voiceModeStatus: VoiceModeStatus,
     voiceTranscript: String,
+    isMicMuted: Boolean,
     isLoading: Boolean,
     onToggleVoiceMode: () -> Unit,
     onUpdateVoiceStatus: (VoiceModeStatus) -> Unit,
     onUpdateVoiceTranscript: (String) -> Unit,
+    onToggleMicMute: () -> Unit,
     onToggleForceGrounding: () -> Unit,
     onFileSelected: (Uri, String?, String) -> Unit,
     onSend: (String) -> Unit
@@ -1740,12 +1746,22 @@ fun MessageInput(
     // When entering voice mode, automatically trigger microphone listening
     LaunchedEffect(isVoiceMode) {
         if (isVoiceMode) {
-            startVoiceRecognition()
+            if (!isMicMuted) startVoiceRecognition()
         } else {
             try {
                 speechRecognizer?.stopListening()
             } catch (e: Exception) {
                 e.printStackTrace()
+            }
+        }
+    }
+
+    // Continuous listening loop: while in Voice Mode and mic not muted, auto-restart when idle
+    LaunchedEffect(isVoiceMode, voiceModeStatus, isLoading, isMicMuted) {
+        if (isVoiceMode && !isMicMuted && !isLoading && voiceModeStatus == VoiceModeStatus.IDLE) {
+            kotlinx.coroutines.delay(700)
+            if (isVoiceMode && !isMicMuted && !isLoading && voiceModeStatus == VoiceModeStatus.IDLE) {
+                startVoiceRecognition()
             }
         }
     }
@@ -1853,6 +1869,20 @@ fun MessageInput(
                                 color = colors.onBackground
                             )
                         }
+                        VoiceModeStatus.MUTED -> {
+                            Box(
+                                modifier = Modifier
+                                    .size(8.dp)
+                                    .background(Color(0xFFFF3B30), CircleShape)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "Microphone muted • Tap mic to unmute",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFFFF3B30)
+                            )
+                        }
                         VoiceModeStatus.IDLE -> {
                             Box(
                                 modifier = Modifier
@@ -1861,7 +1891,7 @@ fun MessageInput(
                             )
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
-                                text = "Voice Mode • Tap to talk",
+                                text = "Voice Mode • Tap mic to talk",
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.Medium,
                                 color = colors.onBackground.copy(alpha = 0.7f)
@@ -1884,27 +1914,31 @@ fun MessageInput(
 
             Spacer(modifier = Modifier.width(8.dp))
 
-            // Mic action toggle button (Tap to speak / stop)
+            // Mic toggle - continuously listening while in Voice Mode, toggle via mic icon
             Surface(
                 shape = RoundedCornerShape(8.dp),
-                color = if (voiceModeStatus == VoiceModeStatus.LISTENING) colors.onBackground else colors.frostedGlass,
-                border = BorderStroke(1.dp, colors.frostedBorder),
+                color = if (isMicMuted) Color(0x22FF3B30) else if (voiceModeStatus == VoiceModeStatus.LISTENING) colors.onBackground else colors.frostedGlass,
+                border = BorderStroke(1.dp, if (isMicMuted) Color(0xFFFF3B30).copy(alpha = 0.5f) else colors.frostedBorder),
                 modifier = Modifier
                     .size(36.dp)
                     .clickable {
                         SoundSynth.playTap()
-                        if (voiceModeStatus == VoiceModeStatus.LISTENING) {
-                            stopVoiceRecognition()
-                        } else {
+                        if (isMicMuted) {
+                            onToggleMicMute()
+                            onUpdateVoiceStatus(VoiceModeStatus.LISTENING)
                             startVoiceRecognition()
+                        } else {
+                            onToggleMicMute()
+                            stopVoiceRecognition()
+                            onUpdateVoiceStatus(VoiceModeStatus.MUTED)
                         }
                     }
             ) {
                 Box(contentAlignment = Alignment.Center) {
                     Icon(
-                        imageVector = if (voiceModeStatus == VoiceModeStatus.LISTENING) Icons.Default.Stop else Icons.Default.Mic,
-                        contentDescription = if (voiceModeStatus == VoiceModeStatus.LISTENING) "Stop listening" else "Start speaking",
-                        tint = if (voiceModeStatus == VoiceModeStatus.LISTENING) colors.background else colors.onBackground.copy(alpha = 0.85f),
+                        imageVector = if (isMicMuted) Icons.Default.MicOff else if (voiceModeStatus == VoiceModeStatus.LISTENING) Icons.Default.Stop else Icons.Default.Mic,
+                        contentDescription = if (isMicMuted) "Unmute microphone" else if (voiceModeStatus == VoiceModeStatus.LISTENING) "Mute microphone" else "Start speaking",
+                        tint = if (isMicMuted) Color(0xFFFF3B30) else if (!isMicMuted && voiceModeStatus == VoiceModeStatus.LISTENING) colors.background else colors.onBackground.copy(alpha = 0.85f),
                         modifier = Modifier.size(18.dp)
                     )
                 }
@@ -1912,19 +1946,23 @@ fun MessageInput(
 
             Spacer(modifier = Modifier.width(6.dp))
 
-            // Extreme far right: Pure white squircle with black waveform icon
+            // Extreme far right: waveform - also toggles mic for continuous Voice Mode
             Surface(
                 shape = RoundedCornerShape(8.dp),
-                color = Color.White,
-                border = BorderStroke(1.dp, Color(0xFFE0E0E0)),
+                color = if (isMicMuted) colors.frostedGlass else Color.White,
+                border = BorderStroke(1.dp, if (isMicMuted) colors.frostedBorder else Color(0xFFE0E0E0)),
                 modifier = Modifier
                     .size(36.dp)
                     .clickable {
                         SoundSynth.playTap()
-                        if (voiceModeStatus == VoiceModeStatus.LISTENING) {
-                            stopVoiceRecognition()
-                        } else {
+                        if (isMicMuted) {
+                            onToggleMicMute()
+                            onUpdateVoiceStatus(VoiceModeStatus.LISTENING)
                             startVoiceRecognition()
+                        } else {
+                            onToggleMicMute()
+                            stopVoiceRecognition()
+                            onUpdateVoiceStatus(VoiceModeStatus.MUTED)
                         }
                     }
             ) {
@@ -1933,8 +1971,8 @@ fun MessageInput(
                     modifier = Modifier.fillMaxSize()
                 ) {
                     WaveformIcon(
-                        tint = Color.Black,
-                        isPulsing = voiceModeStatus == VoiceModeStatus.LISTENING || voiceModeStatus == VoiceModeStatus.SPEAKING
+                        tint = if (isMicMuted) colors.onBackground.copy(alpha = 0.3f) else Color.Black,
+                        isPulsing = !isMicMuted && (voiceModeStatus == VoiceModeStatus.LISTENING || voiceModeStatus == VoiceModeStatus.SPEAKING)
                     )
                 }
             }
