@@ -15,11 +15,27 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import android.os.Bundle
+import android.Manifest
+import android.content.pm.PackageManager
+import android.speech.RecognitionListener
+import android.speech.SpeechRecognizer
+import android.widget.Toast
+import androidx.compose.animation.core.*
+import androidx.compose.material.icons.filled.Keyboard
+import androidx.core.content.ContextCompat
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.automirrored.filled.Undo
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AttachFile
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Info
@@ -30,10 +46,7 @@ import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Stop
-import androidx.compose.material.icons.filled.Undo
-import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -94,8 +107,12 @@ fun GatewayScreen() {
     val geminiKeyEntered by viewModel.geminiKey.collectAsState()
     val anthropicKey by viewModel.anthropicKey.collectAsState()
     val openAiKey by viewModel.openAiKey.collectAsState()
+    val mistralKey by viewModel.mistralKey.collectAsState()
     val customKey by viewModel.customKey.collectAsState()
     val forceGrounding by viewModel.forceGroundingNext.collectAsState()
+    val isVoiceMode by viewModel.isVoiceMode.collectAsState()
+    val voiceModeStatus by viewModel.voiceModeStatus.collectAsState()
+    val voiceTranscript by viewModel.voiceTranscript.collectAsState()
     val context = LocalContext.current
     var showProWarningDialog by remember { mutableStateOf(false) }
     var pendingModelSwitch by remember { mutableStateOf<LlmModel?>(null) }
@@ -108,7 +125,7 @@ fun GatewayScreen() {
             darkColorScheme(
                 primary = Color.White,
                 background = Color.Black,
-                surface = Color.Black,
+                surface = Color(0xFF121214),
                 onPrimary = Color.Black,
                 onBackground = Color.White,
                 onSurface = Color.White
@@ -116,11 +133,11 @@ fun GatewayScreen() {
         } else {
             lightColorScheme(
                 primary = Color.Black,
-                background = Color(0xFFF7F8FA),
+                background = Color.White,
                 surface = Color.White,
                 onPrimary = Color.White,
-                onBackground = Color(0xFF1C1D1F),
-                onSurface = Color(0xFF1C1D1F)
+                onBackground = Color.Black,
+                onSurface = Color.Black
             )
         }
     }
@@ -128,17 +145,18 @@ fun GatewayScreen() {
     val gatewayColors = remember(isDarkMode) {
         GatewayColors(
             isDarkMode = isDarkMode,
-            background = if (isDarkMode) Color(0xFF000000) else Color(0xFFF7F8FA),
-            onBackground = if (isDarkMode) Color(0xFFFFFFFF) else Color(0xFF1C1D1F),
-            surface = if (isDarkMode) Color(0xFF000000) else Color(0xFFFFFFFF),
-            onSurface = if (isDarkMode) Color(0xFFFFFFFF) else Color(0xFF1C1D1F),
-            frostedGlass = if (isDarkMode) Color(0x1AFFFFFF) else Color(0x0E000000),
+            background = if (isDarkMode) Color(0xFF000000) else Color(0xFFFFFFFF),
+            onBackground = if (isDarkMode) Color(0xFFFFFFFF) else Color(0xFF000000),
+            surface = if (isDarkMode) Color(0xFF121214) else Color(0xFFFFFFFF),
+            onSurface = if (isDarkMode) Color(0xFFFFFFFF) else Color(0xFF000000),
+            frostedGlass = if (isDarkMode) Color(0x18FFFFFF) else Color(0x0C000000),
             frostedBorder = if (isDarkMode) Color(0x33FFFFFF) else Color(0x22000000),
-            userBubble = if (isDarkMode) Color(0xFF0B5D3E) else Color(0xFFE2F9EC),
-            userBubbleText = if (isDarkMode) Color(0xFFFFFFFF) else Color(0xFF0B3A25),
-            otherBubble = if (isDarkMode) Color(0x1AFFFFFF) else Color(0xFFFFFFFF),
-            otherBubbleText = if (isDarkMode) Color(0xFFFFFFFF) else Color(0xFF1C1D1F),
-            systemAmber = Color(0xFFE4A115)
+            userBubble = if (isDarkMode) Color(0xFFFFFFFF) else Color(0xFF000000),
+            userBubbleText = if (isDarkMode) Color(0xFF000000) else Color(0xFFFFFFFF),
+            otherBubble = if (isDarkMode) Color(0xFF18181A) else Color(0xFFF2F2F5),
+            otherBubbleText = if (isDarkMode) Color(0xFFF4F4F6) else Color(0xFF000000),
+            systemAmber = Color(0xFFE4A115),
+            accent = if (isDarkMode) Color(0xFFFFFFFF) else Color(0xFF000000)
         )
     }
 
@@ -178,6 +196,7 @@ fun GatewayScreen() {
                         var anthropicSubMenuExpanded by remember { mutableStateOf(false) }
                         var openAiSubMenuExpanded by remember { mutableStateOf(false) }
                         var geminiSubMenuExpanded by remember { mutableStateOf(false) }
+                        var mistralSubMenuExpanded by remember { mutableStateOf(false) }
 
                         val modelLabel = selectedModel.displayName
 
@@ -201,6 +220,7 @@ fun GatewayScreen() {
                                 anthropicSubMenuExpanded = selectedModel.provider == LlmProvider.ANTHROPIC
                                 openAiSubMenuExpanded = selectedModel.provider == LlmProvider.OPENAI
                                 geminiSubMenuExpanded = selectedModel.provider == LlmProvider.GEMINI_FLASH || selectedModel.provider == LlmProvider.GEMINI_PRO
+                                mistralSubMenuExpanded = selectedModel.provider == LlmProvider.MISTRAL
                             }
                         }
 
@@ -257,6 +277,7 @@ fun GatewayScreen() {
                                                 val keyEntered = when (selectedModel.provider) {
                                                     LlmProvider.ANTHROPIC -> anthropicKey.isNotEmpty()
                                                     LlmProvider.OPENAI -> openAiKey.isNotEmpty()
+                                                    LlmProvider.MISTRAL -> mistralKey.isNotEmpty()
                                                     LlmProvider.CUSTOM -> customKey.isNotEmpty()
                                                     else -> false
                                                 }
@@ -512,6 +533,119 @@ fun GatewayScreen() {
                                                 onClick = { 
                                                     SoundSynth.playTap()
                                                     handleModelSelect(LlmModel.GEMINI_PRO)
+                                                }
+                                            )
+                                        }
+
+                                        HorizontalDivider(color = colors.frostedBorder, modifier = Modifier.padding(vertical = 4.dp))
+
+                                        // Mistral AI Section
+                                        DropdownMenuItem(
+                                            text = {
+                                                Row(
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    Column {
+                                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                                            Text("Mistral AI", color = colors.onBackground, fontWeight = FontWeight.Bold)
+                                                            Spacer(modifier = Modifier.width(4.dp))
+                                                            Text(
+                                                                text = "Paid Key",
+                                                                color = colors.systemAmber,
+                                                                fontSize = 9.sp,
+                                                                fontWeight = FontWeight.Bold,
+                                                                modifier = Modifier
+                                                                    .background(colors.systemAmber.copy(alpha = 0.15f), RoundedCornerShape(4.dp))
+                                                                    .padding(horizontal = 4.dp, vertical = 2.dp)
+                                                            )
+                                                        }
+                                                        Text(
+                                                            text = "Large 3 / Med 3.5 / Small 4 / Code",
+                                                            color = colors.onBackground.copy(alpha = 0.4f),
+                                                            fontSize = 9.sp
+                                                        )
+                                                    }
+                                                    Icon(
+                                                        imageVector = if (mistralSubMenuExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                                                        contentDescription = null,
+                                                        tint = colors.onBackground.copy(alpha = 0.7f),
+                                                        modifier = Modifier.size(20.dp)
+                                                    )
+                                                }
+                                            },
+                                            onClick = {
+                                                SoundSynth.playTap()
+                                                mistralSubMenuExpanded = !mistralSubMenuExpanded
+                                            }
+                                        )
+
+                                        if (mistralSubMenuExpanded) {
+                                            DropdownMenuItem(
+                                                text = { 
+                                                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 16.dp)) {
+                                                        Text("•  Mistral Large 3", color = colors.onBackground)
+                                                    }
+                                                },
+                                                onClick = { 
+                                                    SoundSynth.playTap()
+                                                    handleModelSelect(LlmModel.MISTRAL_LARGE_3)
+                                                }
+                                            )
+                                            DropdownMenuItem(
+                                                text = { 
+                                                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 16.dp)) {
+                                                        Text("•  Mistral Medium 3.5", color = colors.onBackground)
+                                                    }
+                                                },
+                                                onClick = { 
+                                                    SoundSynth.playTap()
+                                                    handleModelSelect(LlmModel.MISTRAL_MEDIUM_3_5)
+                                                }
+                                            )
+                                            DropdownMenuItem(
+                                                text = { 
+                                                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 16.dp)) {
+                                                        Text("•  Mistral Small 4", color = colors.onBackground)
+                                                    }
+                                                },
+                                                onClick = { 
+                                                    SoundSynth.playTap()
+                                                    handleModelSelect(LlmModel.MISTRAL_SMALL_4)
+                                                }
+                                            )
+                                            DropdownMenuItem(
+                                                text = { 
+                                                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 16.dp)) {
+                                                        Text("•  Codestral", color = colors.onBackground)
+                                                    }
+                                                },
+                                                onClick = { 
+                                                    SoundSynth.playTap()
+                                                    handleModelSelect(LlmModel.CODESTRAL)
+                                                }
+                                            )
+                                            DropdownMenuItem(
+                                                text = { 
+                                                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 16.dp)) {
+                                                        Text("•  Ministral 8B", color = colors.onBackground)
+                                                    }
+                                                },
+                                                onClick = { 
+                                                    SoundSynth.playTap()
+                                                    handleModelSelect(LlmModel.MINISTRAL_8B)
+                                                }
+                                            )
+                                            DropdownMenuItem(
+                                                text = { 
+                                                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 16.dp)) {
+                                                        Text("•  Ministral 3B", color = colors.onBackground)
+                                                    }
+                                                },
+                                                onClick = { 
+                                                    SoundSynth.playTap()
+                                                    handleModelSelect(LlmModel.MINISTRAL_3B)
                                                 }
                                             )
                                         }
@@ -837,7 +971,7 @@ fun GatewayScreen() {
                                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                                 row.forEach { (label, prompt) ->
                                                     Surface(
-                                                        shape = RoundedCornerShape(20.dp),
+                                                        shape = RoundedCornerShape(10.dp),
                                                         color = colors.frostedGlass,
                                                         border = BorderStroke(1.dp, colors.frostedBorder),
                                                         modifier = Modifier.clickable {
@@ -1006,6 +1140,13 @@ fun GatewayScreen() {
                             selectedAttachment = selectedAttachment,
                             selectedModel = selectedModel,
                             isForceGrounding = forceGrounding,
+                            isVoiceMode = isVoiceMode,
+                            voiceModeStatus = voiceModeStatus,
+                            voiceTranscript = voiceTranscript,
+                            isLoading = isLoading,
+                            onToggleVoiceMode = { viewModel.setVoiceMode(!isVoiceMode) },
+                            onUpdateVoiceStatus = { viewModel.updateVoiceStatus(it) },
+                            onUpdateVoiceTranscript = { viewModel.updateVoiceTranscript(it) },
                             onToggleForceGrounding = { viewModel.toggleForceGrounding() },
                             onFileSelected = { uri, mimeType, name ->
                                 viewModel.processSelectedUri(uri, mimeType, name)
@@ -1056,22 +1197,21 @@ fun MessageBubble(
                 )
             }
         } else {
-            // WhatsApp speech-corners
-            val bubbleShape = remember(isUser) {
-                RoundedCornerShape(
-                    topStart = 14.dp,
-                    topEnd = 14.dp,
-                    bottomStart = if (isUser) 14.dp else 2.dp,
-                    bottomEnd = if (isUser) 2.dp else 14.dp
-                )
-            }
+            // Distinct squircle shape for message bubble
+            val bubbleShape = remember { RoundedCornerShape(12.dp) }
 
             Column(modifier = Modifier.widthIn(max = 310.dp)) {
                 Surface(
                     color = if (isUser) colors.userBubble else colors.otherBubble,
                     contentColor = if (isUser) colors.userBubbleText else colors.otherBubbleText,
                     shape = bubbleShape,
-                    border = if (isHighlighted && isUser) BorderStroke(1.5.dp, Color(0xFF4285F4).copy(alpha = 0.6f)) else if (!isUser) BorderStroke(1.dp, colors.frostedBorder) else null,
+                    border = if (isHighlighted && isUser) {
+                        BorderStroke(1.5.dp, colors.onBackground)
+                    } else if (!isUser) {
+                        BorderStroke(1.dp, if (colors.isDarkMode) Color(0xFF2C2C30) else Color(0xFFE2E2E6))
+                    } else {
+                        BorderStroke(1.dp, if (colors.isDarkMode) Color(0xFFFFFFFF) else Color(0xFF000000))
+                    },
                     modifier = Modifier.padding(vertical = 2.dp).then(if (isUser) Modifier.clickable { onUserMessageClick() } else Modifier)
                 ) {
                     Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
@@ -1151,7 +1291,7 @@ fun MessageBubble(
                             Icon(
                                 imageVector = Icons.Default.Language,
                                 contentDescription = "Sources",
-                                tint = if (colors.isDarkMode) Color(0xFF8AB4F8) else Color(0xFF1967D2),
+                                tint = colors.onBackground,
                                 modifier = Modifier.size(13.dp)
                             )
                             Spacer(modifier = Modifier.width(4.dp))
@@ -1159,7 +1299,7 @@ fun MessageBubble(
                                 text = "Sources & Search Results",
                                 fontSize = 11.5.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = if (colors.isDarkMode) Color(0xFF8AB4F8) else Color(0xFF1967D2)
+                                color = colors.onBackground
                             )
                         }
                         Spacer(modifier = Modifier.height(4.dp))
@@ -1167,12 +1307,12 @@ fun MessageBubble(
                             val uriHandler = LocalUriHandler.current
                             message.groundingSources.take(5).forEach { source ->
                                 Surface(
-                                    color = if (colors.isDarkMode) Color(0x1FFFFFFF) else Color(0x0A000000),
-                                    shape = RoundedCornerShape(6.dp),
-                                    border = BorderStroke(0.5.dp, colors.frostedBorder.copy(alpha = 0.3f)),
+                                    color = colors.frostedGlass,
+                                    shape = RoundedCornerShape(8.dp),
+                                    border = BorderStroke(0.5.dp, colors.frostedBorder),
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .clip(RoundedCornerShape(6.dp))
+                                        .clip(RoundedCornerShape(8.dp))
                                         .clickable {
                                             try {
                                                 uriHandler.openUri(source.url)
@@ -1188,7 +1328,7 @@ fun MessageBubble(
                                         Text(
                                             text = "🔗 " + source.title,
                                             fontSize = 11.sp,
-                                            color = if (colors.isDarkMode) Color(0xFF8AB4F8) else Color(0xFF1967D2),
+                                            color = colors.onBackground.copy(alpha = 0.85f),
                                             maxLines = 1,
                                             overflow = TextOverflow.Ellipsis
                                         )
@@ -1198,6 +1338,7 @@ fun MessageBubble(
                         }
                     }
                 }
+            }
                 if (isUser) {
                     androidx.compose.animation.AnimatedVisibility(
                         visible = isHighlighted,
@@ -1205,14 +1346,17 @@ fun MessageBubble(
                         exit = androidx.compose.animation.shrinkVertically() + androidx.compose.animation.fadeOut()
                     ) {
                         Row(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            modifier = Modifier.padding(top = 4.dp, end = 4.dp).align(Alignment.End)
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            modifier = Modifier.padding(top = 4.dp, end = 2.dp).align(Alignment.End)
                         ) {
                             Surface(
-                                shape = RoundedCornerShape(16.dp),
-                                color = colors.frostedGlass.copy(alpha = 0.08f),
-                                border = BorderStroke(0.5.dp, colors.frostedBorder.copy(alpha = 0.3f)),
-                                modifier = Modifier.clickable { onEditUserMessage() }
+                                shape = RoundedCornerShape(8.dp),
+                                color = colors.frostedGlass,
+                                border = BorderStroke(1.dp, colors.frostedBorder),
+                                modifier = Modifier.clickable { 
+                                    SoundSynth.playTap()
+                                    onEditUserMessage() 
+                                }
                             ) {
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
@@ -1221,39 +1365,42 @@ fun MessageBubble(
                                     Icon(
                                         imageVector = Icons.Default.Edit,
                                         contentDescription = "Edit",
-                                        tint = colors.onBackground.copy(alpha = 0.7f),
-                                        modifier = Modifier.size(14.dp)
+                                        tint = colors.onBackground.copy(alpha = 0.8f),
+                                        modifier = Modifier.size(13.dp)
                                     )
                                     Spacer(modifier = Modifier.width(4.dp))
                                     Text(
                                         text = "Edit",
                                         fontSize = 11.sp,
-                                        color = colors.onBackground.copy(alpha = 0.7f),
+                                        color = colors.onBackground.copy(alpha = 0.8f),
                                         fontWeight = FontWeight.Medium
                                     )
                                 }
                             }
                             Surface(
-                                shape = RoundedCornerShape(16.dp),
-                                color = Color(0x22FF3B30),
-                                border = BorderStroke(0.5.dp, Color(0xFFFF3B30).copy(alpha = 0.4f)),
-                                modifier = Modifier.clickable { onRevertUserMessage() }
+                                shape = RoundedCornerShape(8.dp),
+                                color = colors.frostedGlass,
+                                border = BorderStroke(1.dp, colors.frostedBorder),
+                                modifier = Modifier.clickable { 
+                                    SoundSynth.playTap()
+                                    onRevertUserMessage() 
+                                }
                             ) {
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
                                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                                 ) {
                                     Icon(
-                                        imageVector = Icons.Default.Undo,
+                                        imageVector = Icons.AutoMirrored.Filled.Undo,
                                         contentDescription = "Revert",
-                                        tint = Color(0xFFFF3B30).copy(alpha = 0.8f),
-                                        modifier = Modifier.size(14.dp)
+                                        tint = colors.onBackground.copy(alpha = 0.8f),
+                                        modifier = Modifier.size(13.dp)
                                     )
                                     Spacer(modifier = Modifier.width(4.dp))
                                     Text(
                                         text = "Revert",
                                         fontSize = 11.sp,
-                                        color = Color(0xFFFF3B30).copy(alpha = 0.9f),
+                                        color = colors.onBackground.copy(alpha = 0.8f),
                                         fontWeight = FontWeight.Medium
                                     )
                                 }
@@ -1262,42 +1409,95 @@ fun MessageBubble(
                     }
                 }
                 if (!isUser) {
+                    val context = LocalContext.current
+                    var copied by remember { mutableStateOf(false) }
+
+                    LaunchedEffect(copied) {
+                        if (copied) {
+                            kotlinx.coroutines.delay(2000)
+                            copied = false
+                        }
+                    }
+
                     Spacer(modifier = Modifier.height(4.dp))
                     Row(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        modifier = Modifier.padding(start = 4.dp, bottom = 4.dp)
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(start = 2.dp, top = 2.dp, bottom = 4.dp)
                     ) {
+                        // Copy button
                         Surface(
-                            shape = RoundedCornerShape(16.dp),
-                            color = colors.frostedGlass.copy(alpha = 0.05f),
-                            border = BorderStroke(0.5.dp, colors.frostedBorder.copy(alpha = 0.3f)),
-                            modifier = Modifier.clickable { onSpeak() }
+                            shape = RoundedCornerShape(8.dp),
+                            color = colors.frostedGlass,
+                            border = BorderStroke(1.dp, colors.frostedBorder),
+                            modifier = Modifier.clickable {
+                                SoundSynth.playTap()
+                                val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                                val clip = android.content.ClipData.newPlainText("AI Response", message.content)
+                                clipboard.setPrimaryClip(clip)
+                                copied = true
+                                android.widget.Toast.makeText(context, "Copied to clipboard", android.widget.Toast.LENGTH_SHORT).show()
+                            }
                         ) {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
                                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                             ) {
                                 Icon(
-                                    imageVector = if (isSpeaking) Icons.Default.Stop else Icons.Default.VolumeUp,
-                                    contentDescription = if (isSpeaking) "Stop Speaking" else "Read Aloud",
-                                    tint = colors.onBackground.copy(alpha = 0.6f),
-                                    modifier = Modifier.size(14.dp)
+                                    imageVector = if (copied) Icons.Default.Check else Icons.Default.ContentCopy,
+                                    contentDescription = "Copy message",
+                                    tint = colors.onBackground.copy(alpha = 0.75f),
+                                    modifier = Modifier.size(13.dp)
                                 )
                                 Spacer(modifier = Modifier.width(4.dp))
                                 Text(
-                                    text = if (isSpeaking) "Stop" else "Read Aloud",
+                                    text = if (copied) "Copied" else "Copy",
                                     fontSize = 11.sp,
-                                    color = colors.onBackground.copy(alpha = 0.6f),
+                                    color = colors.onBackground.copy(alpha = 0.75f),
                                     fontWeight = FontWeight.Medium
                                 )
                             }
                         }
 
+                        // Read Aloud / Stop button
                         Surface(
-                            shape = RoundedCornerShape(16.dp),
-                            color = colors.frostedGlass.copy(alpha = 0.05f),
-                            border = BorderStroke(0.5.dp, colors.frostedBorder.copy(alpha = 0.3f)),
-                            modifier = Modifier.clickable { onRegenerate() }
+                            shape = RoundedCornerShape(8.dp),
+                            color = if (isSpeaking) colors.onBackground else colors.frostedGlass,
+                            border = BorderStroke(1.dp, colors.frostedBorder),
+                            modifier = Modifier.clickable { 
+                                SoundSynth.playTap()
+                                onSpeak() 
+                            }
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                            ) {
+                                Icon(
+                                    imageVector = if (isSpeaking) Icons.Default.Stop else Icons.AutoMirrored.Filled.VolumeUp,
+                                    contentDescription = if (isSpeaking) "Stop Speaking" else "Read Aloud",
+                                    tint = if (isSpeaking) colors.background else colors.onBackground.copy(alpha = 0.75f),
+                                    modifier = Modifier.size(13.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = if (isSpeaking) "Stop" else "Read",
+                                    fontSize = 11.sp,
+                                    color = if (isSpeaking) colors.background else colors.onBackground.copy(alpha = 0.75f),
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
+                        }
+
+                        // Regenerate button
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = colors.frostedGlass,
+                            border = BorderStroke(1.dp, colors.frostedBorder),
+                            modifier = Modifier.clickable { 
+                                SoundSynth.playTap()
+                                onRegenerate() 
+                            }
                         ) {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
@@ -1306,14 +1506,14 @@ fun MessageBubble(
                                 Icon(
                                     imageVector = Icons.Default.Refresh,
                                     contentDescription = "Regenerate",
-                                    tint = colors.onBackground.copy(alpha = 0.6f),
-                                    modifier = Modifier.size(14.dp)
+                                    tint = colors.onBackground.copy(alpha = 0.75f),
+                                    modifier = Modifier.size(13.dp)
                                 )
                                 Spacer(modifier = Modifier.width(4.dp))
                                 Text(
                                     text = "Regenerate",
                                     fontSize = 11.sp,
-                                    color = colors.onBackground.copy(alpha = 0.6f),
+                                    color = colors.onBackground.copy(alpha = 0.75f),
                                     fontWeight = FontWeight.Medium
                                 )
                             }
@@ -1324,6 +1524,57 @@ fun MessageBubble(
         }
     }
 }
+
+@Composable
+fun WaveformIcon(
+    modifier: Modifier = Modifier,
+    tint: Color = Color.Black,
+    isPulsing: Boolean = false
+) {
+    val infiniteTransition = rememberInfiniteTransition(label = "waveform_bars")
+    val anim1 by infiniteTransition.animateFloat(
+        initialValue = 0.35f,
+        targetValue = 1.0f,
+        animationSpec = infiniteRepeatable(tween(420, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+        label = "w1"
+    )
+    val anim2 by infiniteTransition.animateFloat(
+        initialValue = 0.85f,
+        targetValue = 0.25f,
+        animationSpec = infiniteRepeatable(tween(510, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+        label = "w2"
+    )
+    val anim3 by infiniteTransition.animateFloat(
+        initialValue = 0.25f,
+        targetValue = 0.95f,
+        animationSpec = infiniteRepeatable(tween(390, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+        label = "w3"
+    )
+    val anim4 by infiniteTransition.animateFloat(
+        initialValue = 0.7f,
+        targetValue = 0.3f,
+        animationSpec = infiniteRepeatable(tween(470, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+        label = "w4"
+    )
+
+    Row(
+        modifier = modifier,
+        horizontalArrangement = Arrangement.spacedBy(2.5.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        val baseHeights = listOf(7.dp, 15.dp, 21.dp, 13.dp, 8.dp)
+        val animFactors = listOf(anim1, anim2, anim3, anim4, anim1)
+
+        for (i in 0 until 5) {
+            val barHeight = if (isPulsing) baseHeights[i] * (0.35f + 0.65f * animFactors[i]) else baseHeights[i]
+            Box(
+                modifier = Modifier
+                    .width(2.5.dp)
+                    .height(barHeight)
+                    .background(tint, RoundedCornerShape(1.5.dp))
+            )
+        }
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -1332,6 +1583,13 @@ fun MessageInput(
     selectedAttachment: Attachment?,
     selectedModel: LlmModel,
     isForceGrounding: Boolean,
+    isVoiceMode: Boolean,
+    voiceModeStatus: VoiceModeStatus,
+    voiceTranscript: String,
+    isLoading: Boolean,
+    onToggleVoiceMode: () -> Unit,
+    onUpdateVoiceStatus: (VoiceModeStatus) -> Unit,
+    onUpdateVoiceTranscript: (String) -> Unit,
     onToggleForceGrounding: () -> Unit,
     onFileSelected: (Uri, String?, String) -> Unit,
     onSend: (String) -> Unit
@@ -1342,11 +1600,152 @@ fun MessageInput(
     val colors = LocalGatewayColors.current
     val isGemini = selectedModel.provider == LlmProvider.GEMINI_FLASH || selectedModel.provider == LlmProvider.GEMINI_PRO
 
-    val speechLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+    var hasAudioPermission by remember {
+        mutableStateOf(
+            ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.RECORD_AUDIO
+            ) == PackageManager.PERMISSION_GRANTED
+        )
+    }
+
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        hasAudioPermission = isGranted
+        if (!isGranted) {
+            Toast.makeText(context, "Microphone permission is required for Voice Mode", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    val speechRecognizer = remember {
+        if (SpeechRecognizer.isRecognitionAvailable(context)) {
+            try {
+                SpeechRecognizer.createSpeechRecognizer(context)
+            } catch (e: Exception) {
+                null
+            }
+        } else {
+            null
+        }
+    }
+
+    val speechFallbackLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.resultCode == Activity.RESULT_OK) {
             val matches = result.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
             if (!matches.isNullOrEmpty()) {
-                text += if (text.isEmpty()) matches[0] else " " + matches[0]
+                val spoken = matches[0]
+                if (isVoiceMode) {
+                    onUpdateVoiceTranscript(spoken)
+                    onSend(spoken)
+                } else {
+                    text += if (text.isEmpty()) spoken else " " + spoken
+                }
+            }
+        }
+        if (isVoiceMode && !isLoading) {
+            onUpdateVoiceStatus(VoiceModeStatus.IDLE)
+        }
+    }
+
+    val startVoiceRecognition: () -> Unit = {
+        if (!hasAudioPermission) {
+            permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+        } else {
+            if (speechRecognizer != null) {
+                try {
+                    val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                        putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                        putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+                        putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
+                    }
+                    onUpdateVoiceTranscript("")
+                    onUpdateVoiceStatus(VoiceModeStatus.LISTENING)
+                    speechRecognizer.startListening(intent)
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                    val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                        putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                    }
+                    speechFallbackLauncher.launch(intent)
+                }
+            } else {
+                val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                    putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                }
+                speechFallbackLauncher.launch(intent)
+            }
+        }
+    }
+
+    val stopVoiceRecognition: () -> Unit = {
+        try {
+            speechRecognizer?.stopListening()
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        onUpdateVoiceStatus(VoiceModeStatus.IDLE)
+    }
+
+    DisposableEffect(speechRecognizer) {
+        val listener = object : RecognitionListener {
+            override fun onReadyForSpeech(params: Bundle?) {
+                onUpdateVoiceStatus(VoiceModeStatus.LISTENING)
+            }
+            override fun onBeginningOfSpeech() {}
+            override fun onRmsChanged(rmsdB: Float) {}
+            override fun onBufferReceived(buffer: ByteArray?) {}
+            override fun onEndOfSpeech() {
+                onUpdateVoiceStatus(VoiceModeStatus.PROCESSING)
+            }
+            override fun onError(error: Int) {
+                // Return to idle unless already processing/speaking
+                if (voiceModeStatus == VoiceModeStatus.LISTENING) {
+                    onUpdateVoiceStatus(VoiceModeStatus.IDLE)
+                }
+            }
+            override fun onResults(results: Bundle?) {
+                val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                if (!matches.isNullOrEmpty() && matches[0].isNotBlank()) {
+                    val spoken = matches[0]
+                    onUpdateVoiceTranscript(spoken)
+                    onUpdateVoiceStatus(VoiceModeStatus.PROCESSING)
+                    onSend(spoken)
+                } else {
+                    onUpdateVoiceStatus(VoiceModeStatus.IDLE)
+                }
+            }
+            override fun onPartialResults(partialResults: Bundle?) {
+                val matches = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                if (!matches.isNullOrEmpty()) {
+                    onUpdateVoiceTranscript(matches[0])
+                }
+            }
+            override fun onEvent(eventType: Int, params: Bundle?) {}
+        }
+
+        speechRecognizer?.setRecognitionListener(listener)
+
+        onDispose {
+            try {
+                speechRecognizer?.stopListening()
+                speechRecognizer?.cancel()
+                speechRecognizer?.destroy()
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+
+    // When entering voice mode, automatically trigger microphone listening
+    LaunchedEffect(isVoiceMode) {
+        if (isVoiceMode) {
+            startVoiceRecognition()
+        } else {
+            try {
+                speechRecognizer?.stopListening()
+            } catch (e: Exception) {
+                e.printStackTrace()
             }
         }
     }
@@ -1368,134 +1767,331 @@ fun MessageInput(
     }
 
     val canSend = text.isNotBlank() || selectedAttachment != null
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 8.dp)
-            .background(colors.frostedGlass, RoundedCornerShape(24.dp))
-            .border(1.dp, colors.frostedBorder, RoundedCornerShape(24.dp)),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        // + button far left - all-in-one tooltip for tools (now includes globe)
-        Box {
-            IconButton(onClick = {
-                SoundSynth.playTap()
-                showPlusMenu = true
-            }) {
-                Box {
-                    Icon(Icons.Default.Add, contentDescription = "More tools", tint = if (isForceGrounding && isGemini) Color(0xFF4285F4) else colors.onBackground.copy(alpha = 0.85f))
-                    if (isForceGrounding && isGemini) {
-                        Box(
-                            modifier = Modifier
-                                .size(8.dp)
-                                .align(Alignment.TopEnd)
-                                .background(Color(0xFF4285F4), androidx.compose.foundation.shape.CircleShape)
-                                .border(1.dp, colors.surface, androidx.compose.foundation.shape.CircleShape)
-                        )
+
+    if (isVoiceMode) {
+        // VOICE MODE ACTIVE - Texting is disabled, live microphone is active
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 8.dp)
+                .background(colors.frostedGlass, RoundedCornerShape(12.dp))
+                .border(1.dp, colors.frostedBorder, RoundedCornerShape(12.dp))
+                .padding(horizontal = 8.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Left button: Exit voice mode / return to keyboard texting
+            Surface(
+                shape = RoundedCornerShape(8.dp),
+                color = colors.frostedGlass,
+                border = BorderStroke(1.dp, colors.frostedBorder),
+                modifier = Modifier
+                    .size(36.dp)
+                    .clickable {
+                        SoundSynth.playTap()
+                        onToggleVoiceMode()
                     }
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = Icons.Default.Keyboard,
+                        contentDescription = "Switch to texting",
+                        tint = colors.onBackground.copy(alpha = 0.85f),
+                        modifier = Modifier.size(18.dp)
+                    )
                 }
             }
-            DropdownMenu(
-                expanded = showPlusMenu,
-                onDismissRequest = { showPlusMenu = false },
-                modifier = Modifier.background(colors.surface).border(1.dp, colors.frostedBorder, RoundedCornerShape(12.dp))
+
+            Spacer(modifier = Modifier.width(10.dp))
+
+            // Center Voice Status & Live transcript
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(vertical = 2.dp)
             ) {
-                DropdownMenuItem(
-                    text = { Column { Text("Attach file / image", color = colors.onBackground, fontSize = 12.sp, fontWeight = FontWeight.Medium); Text("Image, doc, text", color = colors.onBackground.copy(alpha = 0.5f), fontSize = 10.sp) } },
-                    leadingIcon = { Icon(Icons.Default.AttachFile, contentDescription = null, tint = colors.onBackground.copy(alpha = 0.85f), modifier = Modifier.size(18.dp)) },
-                    onClick = {
-                        showPlusMenu = false
-                        SoundSynth.playTap()
-                        filePickerLauncher.launch("*/*")
-                    }
-                )
-                DropdownMenuItem(
-                    text = { Column { Text(if (isForceGrounding) "✓ Web grounding (next)" else "Force web grounding", color = if (isForceGrounding) Color(0xFF4285F4) else colors.onBackground, fontSize = 13.sp, fontWeight = if (isForceGrounding) FontWeight.Bold else FontWeight.Normal); Text(if (isGemini) "Gemini 3.7 Flash / 3.1 Pro" else "Only for Gemini", color = colors.onBackground.copy(alpha = 0.5f), fontSize = 10.sp) } },
-                    leadingIcon = { Icon(Icons.Default.Language, contentDescription = null, tint = if (isForceGrounding) Color(0xFF4285F4) else if (isGemini) colors.onBackground else colors.onBackground.copy(alpha = 0.3f), modifier = Modifier.size(18.dp)) },
-                    onClick = {
-                        showPlusMenu = false
-                        SoundSynth.playTap()
-                        if (!isGemini) {
-                            android.widget.Toast.makeText(context, "Web grounding only for Gemini 3.7 Flash / 3.1 Pro", android.widget.Toast.LENGTH_SHORT).show()
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    when (voiceModeStatus) {
+                        VoiceModeStatus.LISTENING -> {
+                            Box(
+                                modifier = Modifier
+                                    .size(8.dp)
+                                    .background(Color(0xFF00E676), CircleShape)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "Listening... Speak now",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = colors.onBackground
+                            )
                         }
-                        onToggleForceGrounding()
+                        VoiceModeStatus.PROCESSING -> {
+                            Box(
+                                modifier = Modifier
+                                    .size(8.dp)
+                                    .background(colors.systemAmber, CircleShape)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "Thinking...",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = colors.onBackground
+                            )
+                        }
+                        VoiceModeStatus.SPEAKING -> {
+                            Box(
+                                modifier = Modifier
+                                    .size(8.dp)
+                                    .background(Color(0xFF4285F4), CircleShape)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "🔊 Speaking response...",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = colors.onBackground
+                            )
+                        }
+                        VoiceModeStatus.IDLE -> {
+                            Box(
+                                modifier = Modifier
+                                    .size(8.dp)
+                                    .background(colors.onBackground.copy(alpha = 0.3f), CircleShape)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "Voice Mode • Tap to talk",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = colors.onBackground.copy(alpha = 0.7f)
+                            )
+                        }
                     }
-                )
-                HorizontalDivider(color = colors.frostedBorder, thickness = 0.5.dp)
-                DropdownMenuItem(
-                    text = { Column { Text("/read <file>", color = colors.onBackground, fontSize = 12.sp, fontWeight = FontWeight.Medium); Text("Read from working dir", color = colors.onBackground.copy(alpha = 0.5f), fontSize = 10.sp) } },
-                    leadingIcon = { Icon(Icons.Default.Description, contentDescription = null, tint = colors.onBackground.copy(alpha = 0.85f), modifier = Modifier.size(18.dp)) },
-                    onClick = {
-                        showPlusMenu = false
-                        text = "/read "
+                }
+
+                if (voiceTranscript.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = "\"$voiceTranscript\"",
+                        fontSize = 11.5.sp,
+                        color = colors.onBackground.copy(alpha = 0.6f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.width(8.dp))
+
+            // Mic action toggle button (Tap to speak / stop)
+            Surface(
+                shape = RoundedCornerShape(8.dp),
+                color = if (voiceModeStatus == VoiceModeStatus.LISTENING) colors.onBackground else colors.frostedGlass,
+                border = BorderStroke(1.dp, colors.frostedBorder),
+                modifier = Modifier
+                    .size(36.dp)
+                    .clickable {
+                        SoundSynth.playTap()
+                        if (voiceModeStatus == VoiceModeStatus.LISTENING) {
+                            stopVoiceRecognition()
+                        } else {
+                            startVoiceRecognition()
+                        }
                     }
-                )
-                DropdownMenuItem(
-                    text = { Column { Text("/export <file>", color = colors.onBackground, fontSize = 12.sp, fontWeight = FontWeight.Medium); Text("Save chat to file", color = colors.onBackground.copy(alpha = 0.5f), fontSize = 10.sp) } },
-                    leadingIcon = { Icon(Icons.Default.Upload, contentDescription = null, tint = colors.onBackground.copy(alpha = 0.85f), modifier = Modifier.size(18.dp)) },
-                    onClick = {
-                        showPlusMenu = false
-                        text = "/export "
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = if (voiceModeStatus == VoiceModeStatus.LISTENING) Icons.Default.Stop else Icons.Default.Mic,
+                        contentDescription = if (voiceModeStatus == VoiceModeStatus.LISTENING) "Stop listening" else "Start speaking",
+                        tint = if (voiceModeStatus == VoiceModeStatus.LISTENING) colors.background else colors.onBackground.copy(alpha = 0.85f),
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.width(6.dp))
+
+            // Extreme far right: Pure white squircle with black waveform icon
+            Surface(
+                shape = RoundedCornerShape(8.dp),
+                color = Color.White,
+                border = BorderStroke(1.dp, Color(0xFFE0E0E0)),
+                modifier = Modifier
+                    .size(36.dp)
+                    .clickable {
+                        SoundSynth.playTap()
+                        if (voiceModeStatus == VoiceModeStatus.LISTENING) {
+                            stopVoiceRecognition()
+                        } else {
+                            startVoiceRecognition()
+                        }
                     }
-                )
-                DropdownMenuItem(
-                    text = { Column { Text("Clear highlights", color = colors.onBackground, fontSize = 12.sp, fontWeight = FontWeight.Medium); Text("Deselect user messages", color = colors.onBackground.copy(alpha = 0.5f), fontSize = 10.sp) } },
-                    leadingIcon = { Icon(Icons.Default.Close, contentDescription = null, tint = colors.onBackground.copy(alpha = 0.7f), modifier = Modifier.size(18.dp)) },
-                    onClick = { showPlusMenu = false }
-                )
+            ) {
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier.fillMaxSize()
+                ) {
+                    WaveformIcon(
+                        tint = Color.Black,
+                        isPulsing = voiceModeStatus == VoiceModeStatus.LISTENING || voiceModeStatus == VoiceModeStatus.SPEAKING
+                    )
+                }
             }
         }
+    } else {
+        // STANDARD TEXTING MODE
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 8.dp)
+                .background(colors.frostedGlass, RoundedCornerShape(12.dp))
+                .border(1.dp, colors.frostedBorder, RoundedCornerShape(12.dp)),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // + button far left - all-in-one tooltip for tools (now includes globe)
+            Box {
+                IconButton(onClick = {
+                    SoundSynth.playTap()
+                    showPlusMenu = true
+                }) {
+                    Box {
+                        Icon(Icons.Default.Add, contentDescription = "More tools", tint = if (isForceGrounding && isGemini) Color(0xFF4285F4) else colors.onBackground.copy(alpha = 0.85f))
+                        if (isForceGrounding && isGemini) {
+                            Box(
+                                modifier = Modifier
+                                    .size(8.dp)
+                                    .align(Alignment.TopEnd)
+                                    .background(Color(0xFF4285F4), androidx.compose.foundation.shape.CircleShape)
+                                    .border(1.dp, colors.surface, androidx.compose.foundation.shape.CircleShape)
+                            )
+                        }
+                    }
+                }
+                DropdownMenu(
+                    expanded = showPlusMenu,
+                    onDismissRequest = { showPlusMenu = false },
+                    modifier = Modifier.background(colors.surface).border(1.dp, colors.frostedBorder, RoundedCornerShape(12.dp))
+                ) {
+                    DropdownMenuItem(
+                        text = { Column { Text("Attach file / image", color = colors.onBackground, fontSize = 12.sp, fontWeight = FontWeight.Medium); Text("Image, doc, text", color = colors.onBackground.copy(alpha = 0.5f), fontSize = 10.sp) } },
+                        leadingIcon = { Icon(Icons.Default.AttachFile, contentDescription = null, tint = colors.onBackground.copy(alpha = 0.85f), modifier = Modifier.size(18.dp)) },
+                        onClick = {
+                            showPlusMenu = false
+                            SoundSynth.playTap()
+                            filePickerLauncher.launch("*/*")
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Column { Text(if (isForceGrounding) "✓ Web grounding (next)" else "Force web grounding", color = if (isForceGrounding) Color(0xFF4285F4) else colors.onBackground, fontSize = 13.sp, fontWeight = if (isForceGrounding) FontWeight.Bold else FontWeight.Normal); Text(if (isGemini) "Gemini 3.7 Flash / 3.1 Pro" else "Only for Gemini", color = colors.onBackground.copy(alpha = 0.5f), fontSize = 10.sp) } },
+                        leadingIcon = { Icon(Icons.Default.Language, contentDescription = null, tint = if (isForceGrounding) Color(0xFF4285F4) else if (isGemini) colors.onBackground else colors.onBackground.copy(alpha = 0.3f), modifier = Modifier.size(18.dp)) },
+                        onClick = {
+                            showPlusMenu = false
+                            SoundSynth.playTap()
+                            if (!isGemini) {
+                                android.widget.Toast.makeText(context, "Web grounding only for Gemini 3.7 Flash / 3.1 Pro", android.widget.Toast.LENGTH_SHORT).show()
+                            }
+                            onToggleForceGrounding()
+                        }
+                    )
+                    HorizontalDivider(color = colors.frostedBorder, thickness = 0.5.dp)
+                    DropdownMenuItem(
+                        text = { Column { Text("/read <file>", color = colors.onBackground, fontSize = 12.sp, fontWeight = FontWeight.Medium); Text("Read from working dir", color = colors.onBackground.copy(alpha = 0.5f), fontSize = 10.sp) } },
+                        leadingIcon = { Icon(Icons.Default.Description, contentDescription = null, tint = colors.onBackground.copy(alpha = 0.85f), modifier = Modifier.size(18.dp)) },
+                        onClick = {
+                            showPlusMenu = false
+                            text = "/read "
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Column { Text("/export <file>", color = colors.onBackground, fontSize = 12.sp, fontWeight = FontWeight.Medium); Text("Save chat to file", color = colors.onBackground.copy(alpha = 0.5f), fontSize = 10.sp) } },
+                        leadingIcon = { Icon(Icons.Default.Upload, contentDescription = null, tint = colors.onBackground.copy(alpha = 0.85f), modifier = Modifier.size(18.dp)) },
+                        onClick = {
+                            showPlusMenu = false
+                            text = "/export "
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Column { Text("Clear highlights", color = colors.onBackground, fontSize = 12.sp, fontWeight = FontWeight.Medium); Text("Deselect user messages", color = colors.onBackground.copy(alpha = 0.5f), fontSize = 10.sp) } },
+                        leadingIcon = { Icon(Icons.Default.Close, contentDescription = null, tint = colors.onBackground.copy(alpha = 0.7f), modifier = Modifier.size(18.dp)) },
+                        onClick = { showPlusMenu = false }
+                    )
+                }
+            }
 
-        TextField(
-            value = text,
-            onValueChange = { text = it },
-            modifier = Modifier.weight(1f),
-            colors = TextFieldDefaults.colors(
-                focusedContainerColor = Color.Transparent,
-                unfocusedContainerColor = Color.Transparent,
-                focusedIndicatorColor = Color.Transparent,
-                unfocusedIndicatorColor = Color.Transparent,
-                focusedTextColor = colors.onBackground,
-                unfocusedTextColor = colors.onBackground,
-                cursorColor = colors.onBackground
-            ),
-            placeholder = { Text(if (isForceGrounding && isGemini) "Message • 🌐 grounding next" else "Message • /read & /export", color = colors.onBackground.copy(alpha = 0.4f), fontSize = 13.sp) },
-            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Send),
-            keyboardActions = androidx.compose.foundation.text.KeyboardActions(onSend = {
-                if (canSend) {
+            TextField(
+                value = text,
+                onValueChange = { text = it },
+                modifier = Modifier.weight(1f),
+                colors = TextFieldDefaults.colors(
+                    focusedContainerColor = Color.Transparent,
+                    unfocusedContainerColor = Color.Transparent,
+                    focusedIndicatorColor = Color.Transparent,
+                    unfocusedIndicatorColor = Color.Transparent,
+                    focusedTextColor = colors.onBackground,
+                    unfocusedTextColor = colors.onBackground,
+                    cursorColor = colors.onBackground
+                ),
+                placeholder = { Text(if (isForceGrounding && isGemini) "Message • 🌐 grounding next" else "Message • /read & /export", color = colors.onBackground.copy(alpha = 0.4f), fontSize = 13.sp) },
+                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Send),
+                keyboardActions = androidx.compose.foundation.text.KeyboardActions(onSend = {
+                    if (canSend) {
+                        SoundSynth.playTap()
+                        onSend(text)
+                        text = ""
+                    }
+                }),
+                maxLines = 5
+            )
+
+            IconButton(onClick = {
+                SoundSynth.playTap()
+                try {
+                    val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                        putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                    }
+                    speechFallbackLauncher.launch(intent)
+                } catch (e: Exception) { e.printStackTrace() }
+            }) {
+                Icon(Icons.Default.Mic, contentDescription = "Dictation", tint = colors.onBackground.copy(alpha = 0.85f))
+            }
+
+            IconButton(
+                onClick = {
+                    if (!canSend) return@IconButton
                     SoundSynth.playTap()
                     onSend(text)
                     text = ""
-                }
-            }),
-            maxLines = 5
-        )
+                },
+                enabled = true
+            ) {
+                Icon(
+                    Icons.AutoMirrored.Filled.Send,
+                    contentDescription = "Send",
+                    tint = if (canSend) colors.onBackground else colors.onBackground.copy(alpha = 0.3f)
+                )
+            }
 
-        IconButton(onClick = {
-            SoundSynth.playTap()
-            try {
-                val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-                    putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            // Extreme far right: Pure white squircle with black waveform icon for Voice Mode
+            Surface(
+                shape = RoundedCornerShape(8.dp),
+                color = Color.White,
+                border = BorderStroke(1.dp, Color(0xFFE0E0E0)),
+                modifier = Modifier
+                    .padding(end = 4.dp)
+                    .size(36.dp)
+                    .clickable {
+                        SoundSynth.playTap()
+                        onToggleVoiceMode()
+                    }
+            ) {
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier.fillMaxSize()
+                ) {
+                    WaveformIcon(tint = Color.Black)
                 }
-                speechLauncher.launch(intent)
-            } catch (e: Exception) { e.printStackTrace() }
-        }) {
-            Icon(Icons.Default.Mic, contentDescription = "Dictation", tint = colors.onBackground.copy(alpha = 0.85f))
-        }
-        IconButton(
-            onClick = {
-                if (!canSend) return@IconButton
-                SoundSynth.playTap()
-                onSend(text)
-                text = ""
-            },
-            enabled = true
-        ) {
-            Icon(
-                Icons.Default.Send,
-                contentDescription = "Send",
-                tint = if (canSend) colors.onBackground else colors.onBackground.copy(alpha = 0.3f)
-            )
+            }
         }
     }
 }
@@ -1507,6 +2103,7 @@ fun SettingsDrawerContent(viewModel: GatewayViewModel) {
     val colors = LocalGatewayColors.current
     val anthropicKey by viewModel.anthropicKey.collectAsState()
     val openAiKey by viewModel.openAiKey.collectAsState()
+    val mistralKey by viewModel.mistralKey.collectAsState()
     val geminiKey by viewModel.geminiKey.collectAsState()
     val customKey by viewModel.customKey.collectAsState()
     val customBaseUrl by viewModel.customBaseUrl.collectAsState()
@@ -1523,7 +2120,12 @@ fun SettingsDrawerContent(viewModel: GatewayViewModel) {
         }
     }
 
-    Column(modifier = Modifier.padding(16.dp).fillMaxHeight()) {
+    Column(
+        modifier = Modifier
+            .padding(16.dp)
+            .fillMaxHeight()
+            .verticalScroll(rememberScrollState())
+    ) {
         Text("Gateway Settings", style = MaterialTheme.typography.titleLarge, color = colors.onBackground, fontWeight = FontWeight.Bold)
         Spacer(modifier = Modifier.height(16.dp))
 
@@ -1578,6 +2180,22 @@ fun SettingsDrawerContent(viewModel: GatewayViewModel) {
             )
         )
         OutlinedTextField(
+            value = mistralKey,
+            onValueChange = { viewModel.updateMistralKey(it) },
+            label = { Text("Mistral API Key", color = colors.onBackground.copy(alpha = 0.7f)) },
+            placeholder = { Text("Or set via AI Studio Secrets panel", color = colors.onBackground.copy(alpha = 0.4f), maxLines = 1, fontSize = 12.sp) },
+            visualTransformation = visualTransformation,
+            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = colors.onBackground,
+                unfocusedBorderColor = colors.frostedBorder,
+                focusedTextColor = colors.onBackground,
+                unfocusedTextColor = colors.onBackground,
+                focusedLabelColor = colors.onBackground.copy(alpha = 0.8f),
+                unfocusedLabelColor = colors.onBackground.copy(alpha = 0.6f)
+            )
+        )
+        OutlinedTextField(
             value = geminiKey,
             onValueChange = { viewModel.updateGeminiKey(it) },
             label = { Text("Gemini API Key (Optional)", color = colors.onBackground.copy(alpha = 0.7f)) },
@@ -1596,11 +2214,83 @@ fun SettingsDrawerContent(viewModel: GatewayViewModel) {
         
         Spacer(modifier = Modifier.height(16.dp))
         Text("Custom Endpoint Settings", style = MaterialTheme.typography.titleMedium, color = colors.onBackground, fontWeight = FontWeight.Bold)
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(
+            "Quickly configure any OpenAI-compatible provider:",
+            style = MaterialTheme.typography.bodySmall,
+            color = colors.onBackground.copy(alpha = 0.6f),
+            fontSize = 11.sp
+        )
+        Spacer(modifier = Modifier.height(6.dp))
+
+        // Quick presets
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            Button(
+                onClick = {
+                    SoundSynth.playTap()
+                    viewModel.updateCustomBaseUrl("https://api.mistral.ai/v1/chat/completions")
+                    viewModel.updateCustomModelId("mistral-large-latest")
+                },
+                modifier = Modifier.weight(1f),
+                shape = RoundedCornerShape(8.dp),
+                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = colors.frostedGlass, contentColor = colors.onBackground),
+                border = BorderStroke(1.dp, colors.frostedBorder)
+            ) {
+                Text("Mistral", fontSize = 10.sp)
+            }
+            Button(
+                onClick = {
+                    SoundSynth.playTap()
+                    viewModel.updateCustomBaseUrl("https://api.groq.com/openai/v1/chat/completions")
+                    viewModel.updateCustomModelId("llama-3.3-70b-versatile")
+                },
+                modifier = Modifier.weight(1f),
+                shape = RoundedCornerShape(8.dp),
+                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = colors.frostedGlass, contentColor = colors.onBackground),
+                border = BorderStroke(1.dp, colors.frostedBorder)
+            ) {
+                Text("Groq", fontSize = 10.sp)
+            }
+            Button(
+                onClick = {
+                    SoundSynth.playTap()
+                    viewModel.updateCustomBaseUrl("https://openrouter.ai/api/v1/chat/completions")
+                    viewModel.updateCustomModelId("anthropic/claude-3.5-sonnet")
+                },
+                modifier = Modifier.weight(1f),
+                shape = RoundedCornerShape(8.dp),
+                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = colors.frostedGlass, contentColor = colors.onBackground),
+                border = BorderStroke(1.dp, colors.frostedBorder)
+            ) {
+                Text("OpenRouter", fontSize = 10.sp)
+            }
+            Button(
+                onClick = {
+                    SoundSynth.playTap()
+                    viewModel.updateCustomBaseUrl("https://api.deepseek.com/v1/chat/completions")
+                    viewModel.updateCustomModelId("deepseek-chat")
+                },
+                modifier = Modifier.weight(1f),
+                shape = RoundedCornerShape(8.dp),
+                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = colors.frostedGlass, contentColor = colors.onBackground),
+                border = BorderStroke(1.dp, colors.frostedBorder)
+            ) {
+                Text("DeepSeek", fontSize = 10.sp)
+            }
+        }
         Spacer(modifier = Modifier.height(8.dp))
 
         OutlinedTextField(
             value = customKey,
             onValueChange = { viewModel.updateCustomKey(it) },
+            shape = RoundedCornerShape(8.dp),
             label = { Text("Custom API Key", color = colors.onBackground.copy(alpha = 0.7f)) },
             placeholder = { Text("Or set via AI Studio Secrets panel", color = colors.onBackground.copy(alpha = 0.4f), maxLines = 1, fontSize = 12.sp) },
             visualTransformation = visualTransformation,
@@ -1617,6 +2307,7 @@ fun SettingsDrawerContent(viewModel: GatewayViewModel) {
         OutlinedTextField(
             value = customBaseUrl,
             onValueChange = { viewModel.updateCustomBaseUrl(it) },
+            shape = RoundedCornerShape(8.dp),
             label = { Text("Custom Base URL", color = colors.onBackground.copy(alpha = 0.7f)) },
             modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
             colors = OutlinedTextFieldDefaults.colors(
@@ -1631,6 +2322,7 @@ fun SettingsDrawerContent(viewModel: GatewayViewModel) {
         OutlinedTextField(
             value = customModelId,
             onValueChange = { viewModel.updateCustomModelId(it) },
+            shape = RoundedCornerShape(8.dp),
             label = { Text("Custom Model ID", color = colors.onBackground.copy(alpha = 0.7f)) },
             modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
             colors = OutlinedTextFieldDefaults.colors(
@@ -1652,6 +2344,7 @@ fun SettingsDrawerContent(viewModel: GatewayViewModel) {
                 SoundSynth.playTap()
                 dirPicker.launch(null) 
             },
+            shape = RoundedCornerShape(8.dp),
             modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
             colors = ButtonDefaults.buttonColors(containerColor = colors.frostedGlass, contentColor = colors.onBackground),
             border = BorderStroke(1.dp, colors.frostedBorder)

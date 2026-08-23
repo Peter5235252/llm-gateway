@@ -32,9 +32,17 @@ enum class LlmModel(val provider: LlmProvider, val modelId: String, val displayN
     GEMINI_PRO(LlmProvider.GEMINI_PRO, "gemini-3.1-pro-preview", "Gemini 3.1 Pro", true),
     
     MISTRAL_LARGE_3(LlmProvider.MISTRAL, "mistral-large-latest", "Mistral Large 3", false),
-    MISTRAL_SMALL_3(LlmProvider.MISTRAL, "mistral-small-latest", "Mistral Small 3", false),
+    MISTRAL_MEDIUM_3_5(LlmProvider.MISTRAL, "mistral-medium-latest", "Mistral Medium 3.5", false),
+    MISTRAL_SMALL_4(LlmProvider.MISTRAL, "mistral-small-latest", "Mistral Small 4", false),
+    CODESTRAL(LlmProvider.MISTRAL, "codestral-latest", "Codestral", false),
+    MINISTRAL_8B(LlmProvider.MISTRAL, "ministral-8b-latest", "Ministral 8B", false),
+    MINISTRAL_3B(LlmProvider.MISTRAL, "ministral-3b-latest", "Ministral 3B", false),
     
     CUSTOM_MODEL(LlmProvider.CUSTOM, "custom", "Custom Model", false)
+}
+
+enum class VoiceModeStatus {
+    IDLE, LISTENING, PROCESSING, SPEAKING, MUTED
 }
 
 data class Attachment(
@@ -109,6 +117,18 @@ class GatewayViewModel(application: Application) : AndroidViewModel(application)
     private val _speakingMessageId = MutableStateFlow<String?>(null)
     val speakingMessageId: StateFlow<String?> = _speakingMessageId.asStateFlow()
 
+    private val _isVoiceMode = MutableStateFlow(false)
+    val isVoiceMode: StateFlow<Boolean> = _isVoiceMode.asStateFlow()
+
+    private val _isMicMuted = MutableStateFlow(false)
+    val isMicMuted: StateFlow<Boolean> = _isMicMuted.asStateFlow()
+
+    private val _voiceModeStatus = MutableStateFlow(VoiceModeStatus.IDLE)
+    val voiceModeStatus: StateFlow<VoiceModeStatus> = _voiceModeStatus.asStateFlow()
+
+    private val _voiceTranscript = MutableStateFlow("")
+    val voiceTranscript: StateFlow<String> = _voiceTranscript.asStateFlow()
+
     private var tts: TextToSpeech? = null
     private var isTtsInitialized = false
 
@@ -123,7 +143,11 @@ class GatewayViewModel(application: Application) : AndroidViewModel(application)
     val isDarkMode = MutableStateFlow(settingsRepo.isDarkMode())
 
     init {
-        tts = TextToSpeech(application, this)
+        try {
+            tts = TextToSpeech(application, this)
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
         
         // Auto-fill API keys from AI Studio Secrets in Preview environment (DEBUG build)
         if (com.example.BuildConfig.DEBUG) {
@@ -162,11 +186,17 @@ class GatewayViewModel(application: Application) : AndroidViewModel(application)
             tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
                 override fun onStart(utteranceId: String?) {
                     _speakingMessageId.value = utteranceId
+                    if (_isVoiceMode.value) {
+                        _voiceModeStatus.value = VoiceModeStatus.SPEAKING
+                    }
                 }
 
                 override fun onDone(utteranceId: String?) {
                     if (_speakingMessageId.value == utteranceId) {
                         _speakingMessageId.value = null
+                    }
+                    if (_isVoiceMode.value) {
+                        _voiceModeStatus.value = if (_isMicMuted.value) VoiceModeStatus.MUTED else VoiceModeStatus.LISTENING
                     }
                 }
 
@@ -175,9 +205,56 @@ class GatewayViewModel(application: Application) : AndroidViewModel(application)
                     if (_speakingMessageId.value == utteranceId) {
                         _speakingMessageId.value = null
                     }
+                    if (_isVoiceMode.value) {
+                        _voiceModeStatus.value = if (_isMicMuted.value) VoiceModeStatus.MUTED else VoiceModeStatus.LISTENING
+                    }
                 }
             })
         }
+    }
+
+    fun setVoiceMode(enabled: Boolean) {
+        _isVoiceMode.value = enabled
+        if (!enabled) {
+            _voiceModeStatus.value = VoiceModeStatus.IDLE
+            _voiceTranscript.value = ""
+            _isMicMuted.value = false
+            stopSpeaking()
+        } else {
+            _isMicMuted.value = false
+            _voiceModeStatus.value = VoiceModeStatus.LISTENING
+        }
+    }
+
+    fun toggleMicMute() {
+        val newMuted = !_isMicMuted.value
+        _isMicMuted.value = newMuted
+        if (newMuted) {
+            _voiceModeStatus.value = VoiceModeStatus.MUTED
+        } else {
+            if (_voiceModeStatus.value == VoiceModeStatus.MUTED || _voiceModeStatus.value == VoiceModeStatus.IDLE) {
+                _voiceModeStatus.value = VoiceModeStatus.LISTENING
+            }
+        }
+    }
+
+    fun setMicMuted(muted: Boolean) {
+        _isMicMuted.value = muted
+        if (muted) {
+            _voiceModeStatus.value = VoiceModeStatus.MUTED
+        } else {
+            if (_voiceModeStatus.value == VoiceModeStatus.MUTED || _voiceModeStatus.value == VoiceModeStatus.IDLE) {
+                _voiceModeStatus.value = VoiceModeStatus.LISTENING
+            }
+        }
+    }
+
+    fun updateVoiceStatus(status: VoiceModeStatus) {
+        _voiceModeStatus.value = status
+    }
+
+    fun updateVoiceTranscript(transcript: String) {
+        _voiceTranscript.value = transcript
     }
 
     fun speakText(messageId: String, text: String) {
@@ -367,15 +444,10 @@ class GatewayViewModel(application: Application) : AndroidViewModel(application)
                         Triple(res.text, res.sources, res.searchQueries)
                     }
                     LlmProvider.MISTRAL -> {
-                        val key = mistralKey.value
-                        val id = modelVal.modelId
-                        Triple(callOpenAi(id, _messages.value, overrideUrl = "https://api.mistral.ai/v1/chat/completions", overrideKey = key), emptyList<GroundingSource>(), emptyList<String>())
+                        Triple(callMistral(modelVal.modelId, _messages.value), emptyList<GroundingSource>(), emptyList<String>())
                     }
                     LlmProvider.CUSTOM -> {
-                        val url = customBaseUrl.value
-                        val key = customKey.value
-                        val id = customModelId.value
-                        Triple(callOpenAi(id, _messages.value, overrideUrl = url, overrideKey = key), emptyList<GroundingSource>(), emptyList<String>())
+                        Triple(callCustom(_messages.value), emptyList<GroundingSource>(), emptyList<String>())
                     }
                 }
                 
@@ -387,10 +459,18 @@ class GatewayViewModel(application: Application) : AndroidViewModel(application)
                 )
                 _messages.value = _messages.value + newModelMsg
                 
+                if (_isVoiceMode.value) {
+                    _voiceModeStatus.value = VoiceModeStatus.SPEAKING
+                    speakText(newModelMsg.id, responseContent)
+                }
+
                 // Parse for intent commands
                 parseForIntentCommand(responseContent)
             } catch (e: Exception) {
                 _error.value = "Error: ${e.message}"
+                if (_isVoiceMode.value) {
+                    _voiceModeStatus.value = if (_isMicMuted.value) VoiceModeStatus.MUTED else VoiceModeStatus.LISTENING
+                }
             } finally {
                 _isLoading.value = false
                 _isBrowsingWeb.value = false
@@ -439,15 +519,10 @@ class GatewayViewModel(application: Application) : AndroidViewModel(application)
                         Triple(res.text, res.sources, res.searchQueries)
                     }
                     LlmProvider.MISTRAL -> {
-                        val key = mistralKey.value
-                        val id = modelVal.modelId
-                        Triple(callOpenAi(id, historyForGeneration, overrideUrl = "https://api.mistral.ai/v1/chat/completions", overrideKey = key), emptyList<GroundingSource>(), emptyList<String>())
+                        Triple(callMistral(modelVal.modelId, historyForGeneration), emptyList<GroundingSource>(), emptyList<String>())
                     }
                     LlmProvider.CUSTOM -> {
-                        val url = customBaseUrl.value
-                        val key = customKey.value
-                        val id = customModelId.value
-                        Triple(callOpenAi(id, historyForGeneration, overrideUrl = url, overrideKey = key), emptyList<GroundingSource>(), emptyList<String>())
+                        Triple(callCustom(historyForGeneration), emptyList<GroundingSource>(), emptyList<String>())
                     }
                 }
 
@@ -577,22 +652,14 @@ class GatewayViewModel(application: Application) : AndroidViewModel(application)
         return response.body()?.content?.firstOrNull()?.text ?: "No response"
     }
 
-    private suspend fun callOpenAi(modelId: String, history: List<ChatMessage>, overrideUrl: String? = null, overrideKey: String? = null): String {
-        val buildConfigKey = if (overrideUrl != null) {
-            if (overrideUrl.contains("mistral")) {
-                com.example.BuildConfig.MISTRAL_API_KEY.trim()
-            } else {
-                com.example.BuildConfig.CUSTOM_API_KEY.trim()
-            }
-        } else {
-            com.example.BuildConfig.OPENAI_API_KEY.trim()
+    private suspend fun callOpenAi(modelId: String, history: List<ChatMessage>): String {
+        val buildConfigKey = com.example.BuildConfig.OPENAI_API_KEY.trim()
+        val defaultKey = if (buildConfigKey.isNotEmpty() && buildConfigKey != "MY_OPENAI_API_KEY") buildConfigKey else ""
+        val key = openAiKey.value.trim().ifEmpty { defaultKey }
+        if (key.isEmpty()) {
+            throw Exception("OpenAI API key is missing. Please enter your OpenAI API key in Settings or via AI Studio Secrets panel.")
         }
-        val defaultKey = if (buildConfigKey != "MY_CUSTOM_API_KEY" && buildConfigKey != "MY_OPENAI_API_KEY" && buildConfigKey != "MY_MISTRAL_API_KEY") buildConfigKey else ""
-        val providedKey = (overrideKey ?: openAiKey.value).trim()
-        val key = providedKey.ifEmpty { defaultKey }
-        if (key.isEmpty()) throw Exception("API key is missing. Enter it in Settings or via AI Studio Secrets panel.")
 
-        
         val mappedMessages = history.filter { it.role != "system" }.map { msg ->
             val promptContent = if (msg.attachment?.textContent != null) {
                 "${msg.content}\n\n[File Attachment: ${msg.attachment.name}]\n${msg.attachment.textContent}"
@@ -605,24 +672,92 @@ class GatewayViewModel(application: Application) : AndroidViewModel(application)
             )
         }
         val request = OpenAiRequest(model = modelId, messages = mappedMessages)
-        val finalUrl = if (overrideUrl != null) {
-            val trimmedUrl = overrideUrl.trim()
-            if (!trimmedUrl.endsWith("/chat/completions") && !trimmedUrl.endsWith("/completions")) {
-                if (trimmedUrl.endsWith("/")) "${trimmedUrl}chat/completions" else "$trimmedUrl/chat/completions"
-            } else {
-                trimmedUrl
-            }
-        } else {
-            null
-        }
-        
-        val response = if (finalUrl != null) {
-            LlmClient.apiService.sendOpenAiMessage(url = finalUrl, authorization = "Bearer $key", request = request)
-        } else {
-            LlmClient.apiService.sendOpenAiMessage(authorization = "Bearer $key", request = request)
-        }
+        val response = LlmClient.apiService.sendOpenAiMessage(
+            url = "https://api.openai.com/v1/chat/completions",
+            authorization = "Bearer $key",
+            request = request
+        )
         if (!response.isSuccessful) {
-            throw Exception("HTTP ${response.code()}: ${response.errorBody()?.string()}")
+            val err = response.errorBody()?.string() ?: ""
+            throw Exception("OpenAI API Error (HTTP ${response.code()}): $err")
+        }
+        return response.body()?.choices?.firstOrNull()?.message?.content ?: "No response"
+    }
+
+    private suspend fun callMistral(modelId: String, history: List<ChatMessage>): String {
+        val buildConfigKey = com.example.BuildConfig.MISTRAL_API_KEY.trim()
+        val defaultKey = if (buildConfigKey.isNotEmpty() && buildConfigKey != "MY_MISTRAL_API_KEY") buildConfigKey else ""
+        val key = mistralKey.value.trim().ifEmpty { defaultKey }
+        if (key.isEmpty()) {
+            throw Exception("Mistral API key is missing. Please enter your Mistral API key in Settings or via AI Studio Secrets panel.")
+        }
+
+        val mappedMessages = history.filter { it.role != "system" }.map { msg ->
+            val promptContent = if (msg.attachment?.textContent != null) {
+                "${msg.content}\n\n[File Attachment: ${msg.attachment.name}]\n${msg.attachment.textContent}"
+            } else {
+                msg.content
+            }
+            OpenAiMessage(
+                role = if (msg.role == "model") "assistant" else msg.role,
+                content = promptContent
+            )
+        }
+        val request = OpenAiRequest(model = modelId, messages = mappedMessages)
+        val response = LlmClient.apiService.sendOpenAiMessage(
+            url = "https://api.mistral.ai/v1/chat/completions",
+            authorization = "Bearer $key",
+            request = request
+        )
+        if (!response.isSuccessful) {
+            val err = response.errorBody()?.string() ?: ""
+            throw Exception("Mistral API Error (HTTP ${response.code()}): $err")
+        }
+        return response.body()?.choices?.firstOrNull()?.message?.content ?: "No response"
+    }
+
+    private suspend fun callCustom(history: List<ChatMessage>): String {
+        val buildConfigKey = com.example.BuildConfig.CUSTOM_API_KEY.trim()
+        val defaultKey = if (buildConfigKey.isNotEmpty() && buildConfigKey != "MY_CUSTOM_API_KEY") buildConfigKey else ""
+        val key = customKey.value.trim().ifEmpty { defaultKey }
+
+        var rawUrl = customBaseUrl.value.trim()
+        if (rawUrl.isEmpty()) {
+            rawUrl = "https://api.openai.com/v1/chat/completions"
+        }
+        // Normalize endpoint url to ensure /chat/completions is targeted
+        val finalUrl = if (!rawUrl.endsWith("/chat/completions") && !rawUrl.endsWith("/completions")) {
+            if (rawUrl.endsWith("/")) "${rawUrl}chat/completions" else "$rawUrl/chat/completions"
+        } else {
+            rawUrl
+        }
+
+        var modelId = customModelId.value.trim()
+        if (modelId.isEmpty()) {
+            modelId = "gpt-4o"
+        }
+
+        val mappedMessages = history.filter { it.role != "system" }.map { msg ->
+            val promptContent = if (msg.attachment?.textContent != null) {
+                "${msg.content}\n\n[File Attachment: ${msg.attachment.name}]\n${msg.attachment.textContent}"
+            } else {
+                msg.content
+            }
+            OpenAiMessage(
+                role = if (msg.role == "model") "assistant" else msg.role,
+                content = promptContent
+            )
+        }
+        val request = OpenAiRequest(model = modelId, messages = mappedMessages)
+        val authHeader = if (key.isNotEmpty()) "Bearer $key" else ""
+        val response = LlmClient.apiService.sendOpenAiMessage(
+            url = finalUrl,
+            authorization = authHeader,
+            request = request
+        )
+        if (!response.isSuccessful) {
+            val err = response.errorBody()?.string() ?: ""
+            throw Exception("Custom Endpoint Error (HTTP ${response.code()}): $err")
         }
         return response.body()?.choices?.firstOrNull()?.message?.content ?: "No response"
     }
