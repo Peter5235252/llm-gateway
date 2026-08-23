@@ -2147,6 +2147,9 @@ fun SettingsDrawerContent(viewModel: GatewayViewModel) {
     val customBaseUrl by viewModel.customBaseUrl.collectAsState()
     val customModelId by viewModel.customModelId.collectAsState()
     val workingDirUri by viewModel.workingDirUri.collectAsState()
+    val ttsMode by viewModel.ttsMode.collectAsState()
+    val cloudTtsVoice by viewModel.cloudTtsVoice.collectAsState()
+    val cloudTtsModel by viewModel.cloudTtsModel.collectAsState()
 
     val dirPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
         if (uri != null) {
@@ -2249,7 +2252,112 @@ fun SettingsDrawerContent(viewModel: GatewayViewModel) {
                 unfocusedLabelColor = colors.onBackground.copy(alpha = 0.6f)
             )
         )
-        
+
+        Spacer(modifier = Modifier.height(16.dp))
+        Text("Voice & TTS — Natural Read Aloud", style = MaterialTheme.typography.titleMedium, color = colors.onBackground, fontWeight = FontWeight.Bold)
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(
+            "Hybrid: Offline (system/Piper/Kokoro via HayaiTTS) + Cloud (OpenAI) for Voice Mode. English default, multilingual auto.",
+            style = MaterialTheme.typography.bodySmall,
+            color = colors.onBackground.copy(alpha = 0.6f),
+            fontSize = 11.sp,
+            lineHeight = 14.sp
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            listOf("auto" to "Auto", "offline" to "Offline", "cloud" to "Cloud").forEach { (value, label) ->
+                val selected = ttsMode == value
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = if (selected) colors.onBackground else colors.frostedGlass,
+                    border = BorderStroke(1.dp, if (selected) colors.onBackground else colors.frostedBorder),
+                    modifier = Modifier.weight(1f).clickable {
+                        SoundSynth.playTap()
+                        viewModel.updateTtsMode(value)
+                    }
+                ) {
+                    Text(
+                        text = label,
+                        modifier = Modifier.padding(vertical = 8.dp),
+                        textAlign = TextAlign.Center,
+                        color = if (selected) colors.background else colors.onBackground,
+                        fontSize = 12.sp,
+                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium
+                    )
+                }
+            }
+        }
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(
+            text = when (ttsMode) {
+                "offline" -> "Offline: uses system TTS (install HayaiTTS/VoxSherpa for Piper/Kokoro natural voices, multilingual 50+ langs)"
+                "cloud" -> "Cloud: uses OpenAI TTS (alloy/echo etc., very natural, needs OpenAI key + internet)"
+                else -> "Auto: Cloud when online + key available, else Offline (recommended)"
+            },
+            color = colors.onBackground.copy(alpha = 0.5f),
+            fontSize = 10.sp,
+            lineHeight = 12.sp
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        if (ttsMode != "offline") {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(
+                    value = cloudTtsVoice,
+                    onValueChange = { viewModel.updateCloudTtsVoice(it) },
+                    label = { Text("Cloud Voice", fontSize = 11.sp) },
+                    placeholder = { Text("alloy, echo, fable, onyx, nova, shimmer", fontSize = 10.sp, color = colors.onBackground.copy(alpha = 0.4f)) },
+                    singleLine = true,
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(8.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = colors.onBackground,
+                        unfocusedBorderColor = colors.frostedBorder,
+                        focusedTextColor = colors.onBackground,
+                        unfocusedTextColor = colors.onBackground
+                    ),
+                    textStyle = androidx.compose.ui.text.TextStyle(fontSize = 12.sp)
+                )
+                OutlinedTextField(
+                    value = cloudTtsModel,
+                    onValueChange = { viewModel.updateCloudTtsModel(it) },
+                    label = { Text("Model", fontSize = 11.sp) },
+                    placeholder = { Text("tts-1 / tts-1-hd", fontSize = 10.sp, color = colors.onBackground.copy(alpha = 0.4f)) },
+                    singleLine = true,
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(8.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = colors.onBackground,
+                        unfocusedBorderColor = colors.frostedBorder,
+                        focusedTextColor = colors.onBackground,
+                        unfocusedTextColor = colors.onBackground
+                    ),
+                    textStyle = androidx.compose.ui.text.TextStyle(fontSize = 12.sp)
+                )
+            }
+            Spacer(modifier = Modifier.height(6.dp))
+        }
+        Button(
+            onClick = {
+                SoundSynth.playTap()
+                viewModel.speakText("test-voice", "Hello! This is a natural voice test in Voice Mode. English is default, I can also speak Español, Français, and 日本語.")
+            },
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(8.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = colors.frostedGlass, contentColor = colors.onBackground),
+            border = BorderStroke(1.dp, colors.frostedBorder)
+        ) {
+            Icon(Icons.AutoMirrored.Filled.VolumeUp, contentDescription = null, modifier = Modifier.size(16.dp))
+            Spacer(modifier = Modifier.width(6.dp))
+            Text("Test natural voice (Voice Mode)", fontSize = 12.sp)
+        }
+        Text(
+            "Tip: Install HayaiTTS or VoxSherpa from F-Droid/Play for offline Piper Kokoro voices (600+ voices, 100% offline). Cloud uses OpenAI key.",
+            color = colors.onBackground.copy(alpha = 0.4f),
+            fontSize = 10.sp,
+            lineHeight = 12.sp,
+            modifier = Modifier.padding(top = 4.dp)
+        )
+
         Spacer(modifier = Modifier.height(16.dp))
         Text("Custom Endpoint Settings", style = MaterialTheme.typography.titleMedium, color = colors.onBackground, fontWeight = FontWeight.Bold)
         Spacer(modifier = Modifier.height(4.dp))

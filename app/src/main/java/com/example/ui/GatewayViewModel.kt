@@ -2,18 +2,16 @@ package com.example.ui
 
 import android.app.Application
 import android.os.Bundle
-import android.speech.tts.TextToSpeech
-import android.speech.tts.UtteranceProgressListener
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.SettingsRepository
 import com.example.network.*
+import com.example.tts.HybridTtsManager
 import com.example.util.FileHelper
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import java.util.Locale
 
 enum class LlmProvider {
     ANTHROPIC, OPENAI, GEMINI_PRO, GEMINI_FLASH, MISTRAL, CUSTOM
@@ -73,7 +71,7 @@ data class ChatMessage(
     val id: String = java.util.UUID.randomUUID().toString()
 )
 
-class GatewayViewModel(application: Application) : AndroidViewModel(application), TextToSpeech.OnInitListener {
+class GatewayViewModel(application: Application) : AndroidViewModel(application) {
 
     private val settingsRepo = SettingsRepository(application)
     private val fileHelper = FileHelper(application)
@@ -129,7 +127,7 @@ class GatewayViewModel(application: Application) : AndroidViewModel(application)
     private val _voiceTranscript = MutableStateFlow("")
     val voiceTranscript: StateFlow<String> = _voiceTranscript.asStateFlow()
 
-    private var tts: TextToSpeech? = null
+    private val hybridTts = HybridTtsManager(application, settingsRepo, viewModelScope)
     private var isTtsInitialized = false
 
     val anthropicKey = MutableStateFlow(settingsRepo.getAnthropicKey())
@@ -141,13 +139,26 @@ class GatewayViewModel(application: Application) : AndroidViewModel(application)
     val customModelId = MutableStateFlow(settingsRepo.getCustomModelId())
     val workingDirUri = MutableStateFlow(settingsRepo.getWorkingDirUri())
     val isDarkMode = MutableStateFlow(settingsRepo.isDarkMode())
+    val ttsMode = MutableStateFlow(settingsRepo.getTtsMode())
+    val cloudTtsVoice = MutableStateFlow(settingsRepo.getCloudTtsVoice())
+    val cloudTtsModel = MutableStateFlow(settingsRepo.getCloudTtsModel())
 
     init {
-        try {
-            tts = TextToSpeech(application, this)
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
+        hybridTts.init(
+            onStart = { utteranceId ->
+                _speakingMessageId.value = utteranceId
+                if (_isVoiceMode.value) _voiceModeStatus.value = VoiceModeStatus.SPEAKING
+            },
+            onDone = { utteranceId ->
+                if (_speakingMessageId.value == utteranceId) _speakingMessageId.value = null
+                if (_isVoiceMode.value) _voiceModeStatus.value = if (_isMicMuted.value) VoiceModeStatus.MUTED else VoiceModeStatus.LISTENING
+            },
+            onError = { utteranceId ->
+                if (_speakingMessageId.value == utteranceId) _speakingMessageId.value = null
+                if (_isVoiceMode.value) _voiceModeStatus.value = if (_isMicMuted.value) VoiceModeStatus.MUTED else VoiceModeStatus.LISTENING
+            }
+        )
+        isTtsInitialized = true
         
         // Auto-fill API keys from AI Studio Secrets in Preview environment (DEBUG build)
         if (com.example.BuildConfig.DEBUG) {
@@ -179,61 +190,7 @@ class GatewayViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    override fun onInit(status: Int) {
-        if (status == TextToSpeech.SUCCESS) {
-            val locale = Locale.getDefault()
-            tts?.language = locale
-            isTtsInitialized = true
-            // More natural voice: prefer enhanced/neural offline voice with high quality
-            try {
-                val voices = tts?.voices
-                val bestVoice = voices
-                    ?.filter { it.locale.language == locale.language && !it.isNetworkConnectionRequired }
-                    ?.sortedWith(compareByDescending<android.speech.tts.Voice> { it.quality }
-                        .thenByDescending { it.name.contains("enhanced", true) || it.name.contains("neural", true) || it.name.contains("wave", true) })
-                    ?.firstOrNull()
-                    ?: voices?.firstOrNull { it.locale.language == "en" && !it.isNetworkConnectionRequired }
-                if (bestVoice != null) {
-                    tts?.voice = bestVoice
-                }
-                tts?.setSpeechRate(0.96f) // slightly slower for natural cadence
-                tts?.setPitch(1.02f) // subtle pitch lift for warmth
-            } catch (e: Exception) {
-                e.printStackTrace()
-                try {
-                    tts?.setSpeechRate(0.96f)
-                    tts?.setPitch(1.02f)
-                } catch (_: Exception) {}
-            }
-            tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
-                override fun onStart(utteranceId: String?) {
-                    _speakingMessageId.value = utteranceId
-                    if (_isVoiceMode.value) {
-                        _voiceModeStatus.value = VoiceModeStatus.SPEAKING
-                    }
-                }
 
-                override fun onDone(utteranceId: String?) {
-                    if (_speakingMessageId.value == utteranceId) {
-                        _speakingMessageId.value = null
-                    }
-                    if (_isVoiceMode.value) {
-                        _voiceModeStatus.value = if (_isMicMuted.value) VoiceModeStatus.MUTED else VoiceModeStatus.LISTENING
-                    }
-                }
-
-                @Deprecated("Deprecated in Java")
-                override fun onError(utteranceId: String?) {
-                    if (_speakingMessageId.value == utteranceId) {
-                        _speakingMessageId.value = null
-                    }
-                    if (_isVoiceMode.value) {
-                        _voiceModeStatus.value = if (_isMicMuted.value) VoiceModeStatus.MUTED else VoiceModeStatus.LISTENING
-                    }
-                }
-            })
-        }
-    }
 
     fun setVoiceMode(enabled: Boolean) {
         _isVoiceMode.value = enabled
@@ -280,54 +237,59 @@ class GatewayViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun speakText(messageId: String, text: String) {
-        if (!isTtsInitialized || tts == null) return
-
+        if (text.isBlank()) return
         if (_speakingMessageId.value == messageId) {
-            tts?.stop()
+            hybridTts.stop()
             _speakingMessageId.value = null
         } else {
-            tts?.stop()
+            hybridTts.stop()
             _speakingMessageId.value = messageId
-            // More natural speech: strip markdown but keep prosody with pauses
-            var cleanText = text
-                .replace(Regex("```[a-zA-Z0-9]*\\n[\\s\\S]*?```"), " . Code block omitted. ")
-                .replace(Regex("^#{1,6}\\s+", RegexOption.MULTILINE), "")
-                .replace(Regex("\\*\\*(.*?)\\*\\*"), "$1")
-                .replace(Regex("\\*(.*?)\\*"), "$1")
-                .replace(Regex("`([^`]+)`"), "$1")
-                .replace(Regex("\\[([^\\]]+)]\\((http[^)]+)\\)"), "$1")
-                .replace(Regex("[*_`~>\\[\\]]"), "")
-                .replace(Regex("\\n{2,}"), ". ")
-                .replace(Regex("\\n"), " ")
-                .replace(Regex("\\s{2,}"), " ")
-                .trim()
-            // Add brief pauses after sentences for natural cadence
-            cleanText = cleanText.replace(Regex("([.!?])\\s+"), "$1  ")
-            if (cleanText.isBlank()) {
-                _speakingMessageId.value = null
-                return
-            }
-
-            try {
-                tts?.setSpeechRate(0.96f)
-                tts?.setPitch(1.02f)
-            } catch (_: Exception) {}
-            val params = Bundle()
-            params.putString(TextToSpeech.Engine.KEY_PARAM_UTTERANCE_ID, messageId)
-            // Use QUEUE_FLUSH with utteranceId for reliable callbacks
-            tts?.speak(cleanText, TextToSpeech.QUEUE_FLUSH, params, messageId)
+            // Hybrid manager handles natural voice + offline/cloud routing + multilingual
+            hybridTts.speak(
+                text = text,
+                utteranceId = messageId,
+                onStart = { id ->
+                    _speakingMessageId.value = id
+                    if (_isVoiceMode.value) _voiceModeStatus.value = VoiceModeStatus.SPEAKING
+                },
+                onDone = { id ->
+                    if (_speakingMessageId.value == id) _speakingMessageId.value = null
+                    if (_isVoiceMode.value) _voiceModeStatus.value = if (_isMicMuted.value) VoiceModeStatus.MUTED else VoiceModeStatus.LISTENING
+                },
+                onError = { id ->
+                    if (_speakingMessageId.value == id) _speakingMessageId.value = null
+                    if (_isVoiceMode.value) _voiceModeStatus.value = if (_isMicMuted.value) VoiceModeStatus.MUTED else VoiceModeStatus.LISTENING
+                }
+            )
         }
     }
 
     fun stopSpeaking() {
-        tts?.stop()
+        hybridTts.stop()
         _speakingMessageId.value = null
     }
 
     override fun onCleared() {
         super.onCleared()
-        tts?.stop()
-        tts?.shutdown()
+        hybridTts.shutdown()
+    }
+
+    fun updateTtsMode(mode: String) {
+        val trimmed = mode.trim().ifEmpty { "auto" }
+        ttsMode.value = trimmed
+        settingsRepo.setTtsMode(trimmed)
+    }
+
+    fun updateCloudTtsVoice(voice: String) {
+        val trimmed = voice.trim().ifEmpty { "alloy" }
+        cloudTtsVoice.value = trimmed
+        settingsRepo.setCloudTtsVoice(trimmed)
+    }
+
+    fun updateCloudTtsModel(model: String) {
+        val trimmed = model.trim().ifEmpty { "tts-1" }
+        cloudTtsModel.value = trimmed
+        settingsRepo.setCloudTtsModel(trimmed)
     }
     
     fun toggleDarkMode() {

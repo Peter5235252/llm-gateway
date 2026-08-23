@@ -51,5 +51,18 @@ class SettingsRepository(context: Context) {
 
     fun isDarkMode(): Boolean = sharedPreferences.getBoolean("is_dark_mode", true)
     fun setDarkMode(enabled: Boolean) = sharedPreferences.edit().putBoolean("is_dark_mode", enabled).apply()
+
+    // Hybrid TTS settings: auto = cloud if online+key else offline, offline = system/Piper-Kokoro, cloud = OpenAI
+    fun getTtsMode(): String = sharedPreferences.getString("tts_mode", "auto") ?: "auto"
+    fun setTtsMode(mode: String) = sharedPreferences.edit().putString("tts_mode", mode).apply()
+
+    fun getCloudTtsVoice(): String = sharedPreferences.getString("cloud_tts_voice", "alloy") ?: "alloy"
+    fun setCloudTtsVoice(voice: String) = sharedPreferences.edit().putString("cloud_tts_voice", voice).apply()
+
+    fun getCloudTtsModel(): String = sharedPreferences.getString("cloud_tts_model", "tts-1") ?: "tts-1"
+    fun setCloudTtsModel(model: String) = sharedPreferences.edit().putString("cloud_tts_model", model).apply()
+
+    fun getCloudTtsBaseUrl(): String = sharedPreferences.getString("cloud_tts_base_url", "https://api.openai.com/v1/audio/speech") ?: "https://api.openai.com/v1/audio/speech"
+    fun setCloudTtsBaseUrl(url: String) = sharedPreferences.edit().putString("cloud_tts_base_url", url).apply()
 }
 
