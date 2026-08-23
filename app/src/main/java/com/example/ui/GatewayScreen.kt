@@ -1795,13 +1795,13 @@ fun MessageInput(
                 .padding(horizontal = 6.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Left button: Exit voice mode - compact
+            // Left button: Exit voice mode / return to keyboard texting
             Surface(
                 shape = RoundedCornerShape(8.dp),
                 color = colors.frostedGlass,
                 border = BorderStroke(1.dp, colors.frostedBorder),
                 modifier = Modifier
-                    .size(32.dp)
+                    .size(36.dp)
                     .clickable {
                         SoundSynth.playTap()
                         onToggleVoiceMode()
@@ -1812,7 +1812,7 @@ fun MessageInput(
                         imageVector = Icons.Default.Keyboard,
                         contentDescription = "Switch to texting",
                         tint = colors.onBackground.copy(alpha = 0.85f),
-                        modifier = Modifier.size(16.dp)
+                        modifier = Modifier.size(18.dp)
                     )
                 }
             }
@@ -1914,13 +1914,13 @@ fun MessageInput(
 
             Spacer(modifier = Modifier.width(8.dp))
 
-            // Mic toggle - compact
+            // Mic toggle - continuously listening while in Voice Mode, toggle via mic icon
             Surface(
                 shape = RoundedCornerShape(8.dp),
                 color = if (isMicMuted) Color(0x22FF3B30) else if (voiceModeStatus == VoiceModeStatus.LISTENING) colors.onBackground else colors.frostedGlass,
                 border = BorderStroke(1.dp, if (isMicMuted) Color(0xFFFF3B30).copy(alpha = 0.5f) else colors.frostedBorder),
                 modifier = Modifier
-                    .size(32.dp)
+                    .size(36.dp)
                     .clickable {
                         SoundSynth.playTap()
                         if (isMicMuted) {
@@ -1939,20 +1939,20 @@ fun MessageInput(
                         imageVector = if (isMicMuted) Icons.Default.MicOff else if (voiceModeStatus == VoiceModeStatus.LISTENING) Icons.Default.Stop else Icons.Default.Mic,
                         contentDescription = if (isMicMuted) "Unmute microphone" else if (voiceModeStatus == VoiceModeStatus.LISTENING) "Mute microphone" else "Start speaking",
                         tint = if (isMicMuted) Color(0xFFFF3B30) else if (!isMicMuted && voiceModeStatus == VoiceModeStatus.LISTENING) colors.background else colors.onBackground.copy(alpha = 0.85f),
-                        modifier = Modifier.size(16.dp)
+                        modifier = Modifier.size(18.dp)
                     )
                 }
             }
 
-            Spacer(modifier = Modifier.width(4.dp))
+            Spacer(modifier = Modifier.width(6.dp))
 
-            // Extreme far right: waveform - compact
+            // Extreme far right: waveform - also toggles mic for continuous Voice Mode
             Surface(
                 shape = RoundedCornerShape(8.dp),
                 color = if (isMicMuted) colors.frostedGlass else Color.White,
                 border = BorderStroke(1.dp, if (isMicMuted) colors.frostedBorder else Color(0xFFE0E0E0)),
                 modifier = Modifier
-                    .size(32.dp)
+                    .size(36.dp)
                     .clickable {
                         SoundSynth.playTap()
                         if (isMicMuted) {
@@ -1972,8 +1972,7 @@ fun MessageInput(
                 ) {
                     WaveformIcon(
                         tint = if (isMicMuted) colors.onBackground.copy(alpha = 0.3f) else Color.Black,
-                        isPulsing = !isMicMuted && (voiceModeStatus == VoiceModeStatus.LISTENING || voiceModeStatus == VoiceModeStatus.SPEAKING),
-                        modifier = Modifier.size(20.dp)
+                        isPulsing = !isMicMuted && (voiceModeStatus == VoiceModeStatus.LISTENING || voiceModeStatus == VoiceModeStatus.SPEAKING)
                     )
                 }
             }
@@ -1990,19 +1989,16 @@ fun MessageInput(
         ) {
             // + button far left - all-in-one tooltip for tools (now includes globe)
             Box {
-            IconButton(
-                onClick = {
-                    SoundSynth.playTap()
-                    showPlusMenu = true
-                },
-                modifier = Modifier.size(32.dp)
-            ) {
+            IconButton(onClick = {
+                SoundSynth.playTap()
+                showPlusMenu = true
+            }) {
                 Box {
-                    Icon(Icons.Default.Add, contentDescription = "More tools", tint = if (isForceGrounding && isGemini) Color(0xFF4285F4) else colors.onBackground.copy(alpha = 0.85f), modifier = Modifier.size(18.dp))
+                    Icon(Icons.Default.Add, contentDescription = "More tools", tint = if (isForceGrounding && isGemini) Color(0xFF4285F4) else colors.onBackground.copy(alpha = 0.85f))
                     if (isForceGrounding && isGemini) {
                         Box(
                             modifier = Modifier
-                                .size(6.dp)
+                                .size(8.dp)
                                 .align(Alignment.TopEnd)
                                 .background(Color(0xFF4285F4), androidx.compose.foundation.shape.CircleShape)
                                 .border(1.dp, colors.surface, androidx.compose.foundation.shape.CircleShape)
@@ -2086,19 +2082,16 @@ fun MessageInput(
                 minLines = 1
             )
 
-            IconButton(
-                onClick = {
-                    SoundSynth.playTap()
-                    try {
-                        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-                            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-                        }
-                        speechFallbackLauncher.launch(intent)
-                    } catch (e: Exception) { e.printStackTrace() }
-                },
-                modifier = Modifier.size(32.dp)
-            ) {
-                Icon(Icons.Default.Mic, contentDescription = "Dictation", tint = colors.onBackground.copy(alpha = 0.85f), modifier = Modifier.size(18.dp))
+            IconButton(onClick = {
+                SoundSynth.playTap()
+                try {
+                    val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                        putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                    }
+                    speechFallbackLauncher.launch(intent)
+                } catch (e: Exception) { e.printStackTrace() }
+            }) {
+                Icon(Icons.Default.Mic, contentDescription = "Dictation", tint = colors.onBackground.copy(alpha = 0.85f))
             }
 
             IconButton(
@@ -2108,14 +2101,12 @@ fun MessageInput(
                     onSend(text)
                     text = ""
                 },
-                enabled = true,
-                modifier = Modifier.size(32.dp)
+                enabled = true
             ) {
                 Icon(
                     Icons.AutoMirrored.Filled.Send,
                     contentDescription = "Send",
-                    tint = if (canSend) colors.onBackground else colors.onBackground.copy(alpha = 0.3f),
-                    modifier = Modifier.size(18.dp)
+                    tint = if (canSend) colors.onBackground else colors.onBackground.copy(alpha = 0.3f)
                 )
             }
 
