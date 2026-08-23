@@ -968,12 +968,12 @@ fun GatewayScreen() {
                                         "Draft email" to "Draft a concise professional email about...",
                                         "Search the web" to "Search the web for the latest news on Gemini 3.7 Flash"
                                     )
-                                    Column(verticalArrangement = Arrangement.spacedBy(8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Column(verticalArrangement = Arrangement.spacedBy(6.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                                         suggestions.chunked(2).forEach { row ->
-                                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                                 row.forEach { (label, prompt) ->
                                                     Surface(
-                                                        shape = RoundedCornerShape(10.dp),
+                                                        shape = RoundedCornerShape(8.dp),
                                                         color = colors.frostedGlass,
                                                         border = BorderStroke(1.dp, colors.frostedBorder),
                                                         modifier = Modifier.clickable {
@@ -983,9 +983,9 @@ fun GatewayScreen() {
                                                     ) {
                                                         Text(
                                                             text = label,
-                                                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
                                                             color = colors.onBackground.copy(alpha = 0.85f),
-                                                            fontSize = 12.sp,
+                                                            fontSize = 11.sp,
                                                             fontWeight = FontWeight.Medium
                                                         )
                                                     }
@@ -1785,23 +1785,23 @@ fun MessageInput(
     val canSend = text.isNotBlank() || selectedAttachment != null
 
     if (isVoiceMode) {
-        // VOICE MODE ACTIVE - Texting is disabled, live microphone is active
+        // VOICE MODE ACTIVE - compact
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 8.dp)
-                .background(colors.frostedGlass, RoundedCornerShape(12.dp))
-                .border(1.dp, colors.frostedBorder, RoundedCornerShape(12.dp))
-                .padding(horizontal = 8.dp, vertical = 6.dp),
+                .padding(horizontal = 8.dp, vertical = 4.dp)
+                .background(colors.frostedGlass, RoundedCornerShape(10.dp))
+                .border(1.dp, colors.frostedBorder, RoundedCornerShape(10.dp))
+                .padding(horizontal = 6.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Left button: Exit voice mode / return to keyboard texting
+            // Left button: Exit voice mode - compact
             Surface(
                 shape = RoundedCornerShape(8.dp),
                 color = colors.frostedGlass,
                 border = BorderStroke(1.dp, colors.frostedBorder),
                 modifier = Modifier
-                    .size(36.dp)
+                    .size(32.dp)
                     .clickable {
                         SoundSynth.playTap()
                         onToggleVoiceMode()
@@ -1812,7 +1812,7 @@ fun MessageInput(
                         imageVector = Icons.Default.Keyboard,
                         contentDescription = "Switch to texting",
                         tint = colors.onBackground.copy(alpha = 0.85f),
-                        modifier = Modifier.size(18.dp)
+                        modifier = Modifier.size(16.dp)
                     )
                 }
             }
@@ -1914,13 +1914,13 @@ fun MessageInput(
 
             Spacer(modifier = Modifier.width(8.dp))
 
-            // Mic toggle - continuously listening while in Voice Mode, toggle via mic icon
+            // Mic toggle - compact
             Surface(
                 shape = RoundedCornerShape(8.dp),
                 color = if (isMicMuted) Color(0x22FF3B30) else if (voiceModeStatus == VoiceModeStatus.LISTENING) colors.onBackground else colors.frostedGlass,
                 border = BorderStroke(1.dp, if (isMicMuted) Color(0xFFFF3B30).copy(alpha = 0.5f) else colors.frostedBorder),
                 modifier = Modifier
-                    .size(36.dp)
+                    .size(32.dp)
                     .clickable {
                         SoundSynth.playTap()
                         if (isMicMuted) {
@@ -1939,20 +1939,20 @@ fun MessageInput(
                         imageVector = if (isMicMuted) Icons.Default.MicOff else if (voiceModeStatus == VoiceModeStatus.LISTENING) Icons.Default.Stop else Icons.Default.Mic,
                         contentDescription = if (isMicMuted) "Unmute microphone" else if (voiceModeStatus == VoiceModeStatus.LISTENING) "Mute microphone" else "Start speaking",
                         tint = if (isMicMuted) Color(0xFFFF3B30) else if (!isMicMuted && voiceModeStatus == VoiceModeStatus.LISTENING) colors.background else colors.onBackground.copy(alpha = 0.85f),
-                        modifier = Modifier.size(18.dp)
+                        modifier = Modifier.size(16.dp)
                     )
                 }
             }
 
-            Spacer(modifier = Modifier.width(6.dp))
+            Spacer(modifier = Modifier.width(4.dp))
 
-            // Extreme far right: waveform - also toggles mic for continuous Voice Mode
+            // Extreme far right: waveform - compact
             Surface(
                 shape = RoundedCornerShape(8.dp),
                 color = if (isMicMuted) colors.frostedGlass else Color.White,
                 border = BorderStroke(1.dp, if (isMicMuted) colors.frostedBorder else Color(0xFFE0E0E0)),
                 modifier = Modifier
-                    .size(36.dp)
+                    .size(32.dp)
                     .clickable {
                         SoundSynth.playTap()
                         if (isMicMuted) {
@@ -1972,40 +1972,44 @@ fun MessageInput(
                 ) {
                     WaveformIcon(
                         tint = if (isMicMuted) colors.onBackground.copy(alpha = 0.3f) else Color.Black,
-                        isPulsing = !isMicMuted && (voiceModeStatus == VoiceModeStatus.LISTENING || voiceModeStatus == VoiceModeStatus.SPEAKING)
+                        isPulsing = !isMicMuted && (voiceModeStatus == VoiceModeStatus.LISTENING || voiceModeStatus == VoiceModeStatus.SPEAKING),
+                        modifier = Modifier.size(20.dp)
                     )
                 }
             }
         }
     } else {
-        // STANDARD TEXTING MODE
+        // STANDARD TEXTING MODE - compact
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 8.dp)
-                .background(colors.frostedGlass, RoundedCornerShape(12.dp))
-                .border(1.dp, colors.frostedBorder, RoundedCornerShape(12.dp)),
+                .padding(horizontal = 8.dp, vertical = 4.dp)
+                .background(colors.frostedGlass, RoundedCornerShape(10.dp))
+                .border(1.dp, colors.frostedBorder, RoundedCornerShape(10.dp)),
             verticalAlignment = Alignment.CenterVertically
         ) {
             // + button far left - all-in-one tooltip for tools (now includes globe)
             Box {
-                IconButton(onClick = {
+            IconButton(
+                onClick = {
                     SoundSynth.playTap()
                     showPlusMenu = true
-                }) {
-                    Box {
-                        Icon(Icons.Default.Add, contentDescription = "More tools", tint = if (isForceGrounding && isGemini) Color(0xFF4285F4) else colors.onBackground.copy(alpha = 0.85f))
-                        if (isForceGrounding && isGemini) {
-                            Box(
-                                modifier = Modifier
-                                    .size(8.dp)
-                                    .align(Alignment.TopEnd)
-                                    .background(Color(0xFF4285F4), androidx.compose.foundation.shape.CircleShape)
-                                    .border(1.dp, colors.surface, androidx.compose.foundation.shape.CircleShape)
-                            )
-                        }
+                },
+                modifier = Modifier.size(32.dp)
+            ) {
+                Box {
+                    Icon(Icons.Default.Add, contentDescription = "More tools", tint = if (isForceGrounding && isGemini) Color(0xFF4285F4) else colors.onBackground.copy(alpha = 0.85f), modifier = Modifier.size(18.dp))
+                    if (isForceGrounding && isGemini) {
+                        Box(
+                            modifier = Modifier
+                                .size(6.dp)
+                                .align(Alignment.TopEnd)
+                                .background(Color(0xFF4285F4), androidx.compose.foundation.shape.CircleShape)
+                                .border(1.dp, colors.surface, androidx.compose.foundation.shape.CircleShape)
+                        )
                     }
                 }
+            }
                 DropdownMenu(
                     expanded = showPlusMenu,
                     onDismissRequest = { showPlusMenu = false },
@@ -2021,14 +2025,12 @@ fun MessageInput(
                         }
                     )
                     DropdownMenuItem(
-                        text = { Column { Text(if (isForceGrounding) "✓ Web grounding (next)" else "Force web grounding", color = if (isForceGrounding) Color(0xFF4285F4) else colors.onBackground, fontSize = 13.sp, fontWeight = if (isForceGrounding) FontWeight.Bold else FontWeight.Normal); Text(if (isGemini) "Gemini 3.7 Flash / 3.1 Pro" else "Only for Gemini", color = colors.onBackground.copy(alpha = 0.5f), fontSize = 10.sp) } },
-                        leadingIcon = { Icon(Icons.Default.Language, contentDescription = null, tint = if (isForceGrounding) Color(0xFF4285F4) else if (isGemini) colors.onBackground else colors.onBackground.copy(alpha = 0.3f), modifier = Modifier.size(18.dp)) },
+                        text = { Column { Text(if (isForceGrounding) "✓ Web grounding (next)" else "Force web grounding", color = if (!isGemini) colors.onBackground.copy(alpha = 0.35f) else if (isForceGrounding) Color(0xFF4285F4) else colors.onBackground, fontSize = 13.sp, fontWeight = if (isForceGrounding) FontWeight.Bold else FontWeight.Normal); Text(if (isGemini) "Gemini 3.7 Flash / 3.1 Pro" else "Only for Gemini — select Gemini model", color = colors.onBackground.copy(alpha = if (isGemini) 0.5f else 0.35f), fontSize = 10.sp) } },
+                        leadingIcon = { Icon(Icons.Default.Language, contentDescription = null, tint = if (!isGemini) colors.onBackground.copy(alpha = 0.3f) else if (isForceGrounding) Color(0xFF4285F4) else colors.onBackground.copy(alpha = 0.85f), modifier = Modifier.size(18.dp)) },
+                        enabled = isGemini,
                         onClick = {
                             showPlusMenu = false
                             SoundSynth.playTap()
-                            if (!isGemini) {
-                                android.widget.Toast.makeText(context, "Web grounding only for Gemini 3.7 Flash / 3.1 Pro", android.widget.Toast.LENGTH_SHORT).show()
-                            }
                             onToggleForceGrounding()
                         }
                     )
@@ -2061,6 +2063,7 @@ fun MessageInput(
                 value = text,
                 onValueChange = { text = it },
                 modifier = Modifier.weight(1f),
+                textStyle = androidx.compose.ui.text.TextStyle(fontSize = 13.sp, lineHeight = 16.sp),
                 colors = TextFieldDefaults.colors(
                     focusedContainerColor = Color.Transparent,
                     unfocusedContainerColor = Color.Transparent,
@@ -2070,7 +2073,7 @@ fun MessageInput(
                     unfocusedTextColor = colors.onBackground,
                     cursorColor = colors.onBackground
                 ),
-                placeholder = { Text(if (isForceGrounding && isGemini) "Message • 🌐 grounding next" else "Message • /read & /export", color = colors.onBackground.copy(alpha = 0.4f), fontSize = 13.sp) },
+                placeholder = { Text(if (isForceGrounding && isGemini) "Message • 🌐 grounding next" else "Message", color = colors.onBackground.copy(alpha = 0.4f), fontSize = 12.sp) },
                 keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Send),
                 keyboardActions = androidx.compose.foundation.text.KeyboardActions(onSend = {
                     if (canSend) {
@@ -2079,19 +2082,23 @@ fun MessageInput(
                         text = ""
                     }
                 }),
-                maxLines = 5
+                maxLines = 3,
+                minLines = 1
             )
 
-            IconButton(onClick = {
-                SoundSynth.playTap()
-                try {
-                    val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-                        putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-                    }
-                    speechFallbackLauncher.launch(intent)
-                } catch (e: Exception) { e.printStackTrace() }
-            }) {
-                Icon(Icons.Default.Mic, contentDescription = "Dictation", tint = colors.onBackground.copy(alpha = 0.85f))
+            IconButton(
+                onClick = {
+                    SoundSynth.playTap()
+                    try {
+                        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                        }
+                        speechFallbackLauncher.launch(intent)
+                    } catch (e: Exception) { e.printStackTrace() }
+                },
+                modifier = Modifier.size(32.dp)
+            ) {
+                Icon(Icons.Default.Mic, contentDescription = "Dictation", tint = colors.onBackground.copy(alpha = 0.85f), modifier = Modifier.size(18.dp))
             }
 
             IconButton(
@@ -2101,12 +2108,14 @@ fun MessageInput(
                     onSend(text)
                     text = ""
                 },
-                enabled = true
+                enabled = true,
+                modifier = Modifier.size(32.dp)
             ) {
                 Icon(
                     Icons.AutoMirrored.Filled.Send,
                     contentDescription = "Send",
-                    tint = if (canSend) colors.onBackground else colors.onBackground.copy(alpha = 0.3f)
+                    tint = if (canSend) colors.onBackground else colors.onBackground.copy(alpha = 0.3f),
+                    modifier = Modifier.size(18.dp)
                 )
             }
 

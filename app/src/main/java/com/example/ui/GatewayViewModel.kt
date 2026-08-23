@@ -181,8 +181,30 @@ class GatewayViewModel(application: Application) : AndroidViewModel(application)
 
     override fun onInit(status: Int) {
         if (status == TextToSpeech.SUCCESS) {
-            tts?.language = Locale.getDefault()
+            val locale = Locale.getDefault()
+            tts?.language = locale
             isTtsInitialized = true
+            // More natural voice: prefer enhanced/neural offline voice with high quality
+            try {
+                val voices = tts?.voices
+                val bestVoice = voices
+                    ?.filter { it.locale.language == locale.language && !it.isNetworkConnectionRequired }
+                    ?.sortedWith(compareByDescending<android.speech.tts.Voice> { it.quality }
+                        .thenByDescending { it.name.contains("enhanced", true) || it.name.contains("neural", true) || it.name.contains("wave", true) })
+                    ?.firstOrNull()
+                    ?: voices?.firstOrNull { it.locale.language == "en" && !it.isNetworkConnectionRequired }
+                if (bestVoice != null) {
+                    tts?.voice = bestVoice
+                }
+                tts?.setSpeechRate(0.96f) // slightly slower for natural cadence
+                tts?.setPitch(1.02f) // subtle pitch lift for warmth
+            } catch (e: Exception) {
+                e.printStackTrace()
+                try {
+                    tts?.setSpeechRate(0.96f)
+                    tts?.setPitch(1.02f)
+                } catch (_: Exception) {}
+            }
             tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
                 override fun onStart(utteranceId: String?) {
                     _speakingMessageId.value = utteranceId
@@ -266,15 +288,33 @@ class GatewayViewModel(application: Application) : AndroidViewModel(application)
         } else {
             tts?.stop()
             _speakingMessageId.value = messageId
-            // Strip markdown symbols and code blocks for fluid speech
-            val cleanText = text
-                .replace(Regex("```[a-zA-Z0-9]*\\n[\\s\\S]*?```"), " code block omitted ")
-                .replace(Regex("[#*_`~>\\[\\]]"), "")
-                .replace(Regex("\\((http[^)]+)\\)"), "")
+            // More natural speech: strip markdown but keep prosody with pauses
+            var cleanText = text
+                .replace(Regex("```[a-zA-Z0-9]*\\n[\\s\\S]*?```"), " . Code block omitted. ")
+                .replace(Regex("^#{1,6}\\s+", RegexOption.MULTILINE), "")
+                .replace(Regex("\\*\\*(.*?)\\*\\*"), "$1")
+                .replace(Regex("\\*(.*?)\\*"), "$1")
+                .replace(Regex("`([^`]+)`"), "$1")
+                .replace(Regex("\\[([^\\]]+)]\\((http[^)]+)\\)"), "$1")
+                .replace(Regex("[*_`~>\\[\\]]"), "")
+                .replace(Regex("\\n{2,}"), ". ")
+                .replace(Regex("\\n"), " ")
+                .replace(Regex("\\s{2,}"), " ")
                 .trim()
+            // Add brief pauses after sentences for natural cadence
+            cleanText = cleanText.replace(Regex("([.!?])\\s+"), "$1  ")
+            if (cleanText.isBlank()) {
+                _speakingMessageId.value = null
+                return
+            }
 
+            try {
+                tts?.setSpeechRate(0.96f)
+                tts?.setPitch(1.02f)
+            } catch (_: Exception) {}
             val params = Bundle()
             params.putString(TextToSpeech.Engine.KEY_PARAM_UTTERANCE_ID, messageId)
+            // Use QUEUE_FLUSH with utteranceId for reliable callbacks
             tts?.speak(cleanText, TextToSpeech.QUEUE_FLUSH, params, messageId)
         }
     }
